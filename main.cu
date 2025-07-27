@@ -5,13 +5,14 @@
 
 int main()
 {
-    CSC csc("/arf/home/delbek/sutensor/delaunay_n14.mtx", true, true);
+    CSC csc("/arf/home/delbek/sutensor/delaunay_n20.mtx", true, true);
 
     BRS* brs = new BRS;
     brs->readFromCSCMatrix(&csc);
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
+    kernel.runBFS(0, 5, 4);
 
     delete brs;
 

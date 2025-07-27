@@ -7,17 +7,58 @@
 
 namespace BRSBFSKernels
 {
-    __global__ void BRSBFS( const unsigned* const __restrict__ sliceSize,
-                            const unsigned* const __restrict__ noSliceSets,
+    __global__ void BRSBFS( const unsigned* const __restrict__ sliceSizePtr,
+                            const unsigned* const __restrict__ noSliceSetsPtr,
                             const unsigned* const __restrict__ sliceSetPtrs,
                             const unsigned* const __restrict__ rowIds,
                             const MASK* const __restrict__ masks,
                             const MASK* const __restrict__ frontier,
                             MASK* const __restrict__ visited,
-                            unsigned* const __restrict__ frontierNextSize,
+                            unsigned* const __restrict__ frontierNextSizePtr,
                             MASK* const __restrict__ frontierNext)
     {
-
+        unsigned sliceSize = *sliceSizePtr;
+        unsigned noSliceSets = *noSliceSetsPtr;
+        unsigned noWarps = (gridDim.x * blockDim.x) / WARP_SIZE;
+        unsigned noSlices = K / sliceSize;
+        unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        unsigned warpID = threadID / WARP_SIZE;
+        unsigned laneID = threadID % WARP_SIZE;
+        unsigned groupID = laneID / noSlices;
+        unsigned threadIDInGroup = laneID % noSlices;
+        
+        for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
+        {
+            MASK fragB = frontier[sliceSet * noSlices + threadIDInGroup];
+            unsigned start = sliceSetPtrs[sliceSet];
+            unsigned end = sliceSetPtrs[sliceSet + 1];
+            for (unsigned rowPtr = start; rowPtr < end; rowPtr += M)
+            {
+                unsigned row = (rowPtr + groupID < end) ? rowIds[rowPtr * noSlices + laneID] : 0;
+                MASK mask = (rowPtr + groupID < end) ? masks[rowPtr * noSlices + laneID] : 0;
+                unsigned fragC[2];
+                #pragma unroll 4
+                for (unsigned round = 0; round < noSlices; ++round)
+                {
+                    fragC[0] = 0;
+                    fragC[1] = 0;
+                    MASK fragA = threadIDInGroup == round ? mask : 0;
+                    m8n8k128(fragC, fragA, fragB);
+                    if (fragC[0] && threadIDInGroup == round)
+                    {
+                        unsigned word = row / MASK_BITS;
+                        unsigned bit = row % MASK_BITS;
+                        MASK temp = (static_cast<MASK>(1) << bit);
+                        MASK old = atomicOr(&visited[word], temp);
+                        if ((old & temp) == 0)
+                        {
+                            atomicAdd(frontierNextSizePtr, 1);
+                            atomicOr(&frontierNext[word], temp);
+                        }
+                    }
+                }
+            }
+        }
     }
 };
 
@@ -43,7 +84,7 @@ BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
 double BRSBFSKernel::hostCode(unsigned sourceVertex)
 {
     BRS* brs = dynamic_cast<BRS*>(matrix);
-    unsigned N = brs->getN();
+    unsigned n = brs->getN();
     unsigned sliceSize = brs->getSliceSize();
     unsigned noSlices = K / sliceSize;
     unsigned noSliceSets = brs->getNoSliceSets();
@@ -85,25 +126,26 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * totalSlots, cudaMemcpyHostToDevice))
 
     // algorithm
-    unsigned noWords = std::ceil(double(N) / MASK_BITS);
+    unsigned noWords = (n + MASK_BITS - 1) / MASK_BITS;
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(MASK) * noWords))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(MASK) * noWords))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(MASK) * noWords))
 
-    unsigned wordIdx = sourceVertex / (MASK_BITS);
-    unsigned bitIdx = sourceVertex % (MASK_BITS);
-    MASK temp = 0;
-    temp |= (static_cast<MASK>(1) << bitIdx);
+    unsigned word = sourceVertex / (MASK_BITS);
+    unsigned bit = sourceVertex % (MASK_BITS);
+    MASK temp = (static_cast<MASK>(1) << bit);
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(MASK) * noWords))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(MASK) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
 
-    gpuErrchk(cudaMemcpy(d_Frontier + wordIdx, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Visited + wordIdx, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
 
     unsigned frontierSize = 1;
+    unsigned totalFrontier = frontierSize;
+    unsigned level = 1;
     double start = omp_get_wtime();
     while (frontierSize != 0)
     {
@@ -122,8 +164,11 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
         std::swap(d_Frontier, d_FrontierNext);
         gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
         gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
+        std::cout << "Level: " << level++ << " has completed. Next level frontier size is: " << frontierSize << std::endl;
+        totalFrontier += frontierSize;
     }
     double end = omp_get_wtime();
+    std::cout << "Total Frontier: " << totalFrontier << std::endl;
 
     gpuErrchk(cudaFree(d_SliceSize))
     gpuErrchk(cudaFree(d_NoSliceSets))

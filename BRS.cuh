@@ -186,7 +186,7 @@ void BRS::readFromCSCMatrix(CSC* csc)
                     }
                     if (rows[ptrs[j - sliceStart]] == i && ptrs[j - sliceStart] < colPtrs[j + 1])
                     {
-                        mask |= static_cast<MASK>(1) << ((MASK_BITS - 1) - (j - sliceStart));
+                        mask |= (static_cast<MASK>(1) << (j - sliceStart));
                     }
                 }
                 if (mask != 0)

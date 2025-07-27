@@ -4,10 +4,12 @@
 #include <iostream>
 #include "omp.h"
 
+#define M 8
 #define K 128
 #define MASK unsigned
 const unsigned MASK_BITS = sizeof(MASK) * 8;
 #define UNSIGNED_MAX 4294967295U
+#define WARP_SIZE 32
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
