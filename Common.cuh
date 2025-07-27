@@ -9,7 +9,17 @@
 const unsigned MASK_BITS = sizeof(MASK) * 8;
 #define UNSIGNED_MAX 4294967295U
 
-__device__ __forceinline__ void mma_m8n8k128(unsigned* fragC, const unsigned& fragA, const unsigned& fragB)
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+    if (code != cudaSuccess)
+    {
+        fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        if (abort) exit(code);
+    }
+}
+
+__device__ __forceinline__ void m8n8k128(unsigned* const __restrict__ fragC, const unsigned& fragA, const unsigned& fragB)
 {
     asm volatile(
         "mma.sync.aligned.m8n8k128.row.col.s32.b1.b1.s32.and.popc"

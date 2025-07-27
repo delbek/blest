@@ -6,38 +6,36 @@
 class BFSKernel
 {
 public:
-    BFSKernel(BitMatrix* matrix) = default;
+    BFSKernel(BitMatrix* matrix);
     BFSKernel(const BFSKernel& other) = delete;
     BFSKernel(BFSKernel&& other) noexcept = delete;
     BFSKernel& operator=(const BFSKernel& other) = delete;
     BFSKernel& operator=(BFSKernel&& other) noexcept = delete;
     virtual ~BFSKernel() = default;
 
-    void runBFS(unsigned nRun, unsigned nIgnore);
-    void hostCode() = 0;
+    void runBFS(unsigned sourceVertex, unsigned nRun, unsigned nIgnore);
+    virtual double hostCode(unsigned sourceVertex) = 0;
 
 protected:
     BitMatrix* matrix;
 };
 
-BFSKernel::BFSKernel()
+BFSKernel::BFSKernel(BitMatrix* matrix)
 : matrix(matrix)
 {
 
 }
 
-void BFSKernel::runBFS(unsigned nRun, unsigned nIgnore)
+void BFSKernel::runBFS(unsigned sourceVertex, unsigned nRun, unsigned nIgnore)
 {
     double total = 0;
 
     for (unsigned i = 0; i < nRun; ++i)
     {
-        double start = omp_get_wtime();
-        hostCode();
-        double end = omp_get_wtime();
+        double time = hostCode(sourceVertex);
         if (i >= nIgnore)
         {
-            total += (end - start);
+            total += time;
         }
     }
 

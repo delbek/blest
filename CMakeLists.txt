@@ -45,6 +45,7 @@ add_executable(sutensor
         BitMatrix.cuh
         BRS.cuh
         BFSKernel.cuh
+        BRSBFSKernel.cuh
 )
 
 target_compile_options(sutensor PRIVATE

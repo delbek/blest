@@ -20,6 +20,13 @@ public:
     void readFromCSCMatrix(CSC* csc);
     void printBRSData();
 
+    [[nodiscard]] inline unsigned getN() {return m_N;}
+    [[nodiscard]] inline unsigned getSliceSize() {return m_SliceSize;}
+    [[nodiscard]] inline unsigned getNoSliceSets() {return m_NoSliceSets;}
+    [[nodiscard]] inline unsigned* getSliceSetPtrs() {return m_SliceSetPtrs;}
+    [[nodiscard]] inline unsigned* getRowIds() {return m_RowIds;}
+    [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
+
 private:
     unsigned m_N;
     unsigned m_SliceSize;
@@ -43,7 +50,6 @@ BRS::BRS(const BRS& other)
   m_SliceSize(other.m_SliceSize),
   m_NoSliceSets(other.m_NoSliceSets)
 {
-    unsigned m_NoSliceSets = std::ceil(m_N / K);
     unsigned noSlices = K / m_SliceSize;
     unsigned totalSlots = (other.m_SliceSetPtrs[m_NoSliceSets]) * noSlices;
 
@@ -86,7 +92,6 @@ BRS& BRS::operator=(const BRS& other)
         m_SliceSize = other.m_SliceSize;
         m_NoSliceSets = other.m_NoSliceSets;
 
-        unsigned m_NoSliceSets = std::ceil(m_N / K);
         unsigned noSlices = K / m_SliceSize;
         unsigned totalSlots = (other.m_SliceSetPtrs[m_NoSliceSets]) * noSlices;
 
@@ -167,7 +172,7 @@ void BRS::readFromCSCMatrix(CSC* csc)
             std::vector<unsigned> ptrs(sliceEnd - sliceStart);
             for (unsigned j = sliceStart; j < sliceEnd; ++j)
             {
-                ptrs[j - sliceStart] = colPtrs[j]; // do note that for this approach to work out, adjancecy list must be sorted
+                ptrs[j - sliceStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
             }
 
             for (unsigned i = 0; i < m_N; ++i)
