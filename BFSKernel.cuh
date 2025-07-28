@@ -13,8 +13,8 @@ public:
     BFSKernel& operator=(BFSKernel&& other) noexcept = delete;
     virtual ~BFSKernel() = default;
 
-    void runBFS(std::string sourceVertexFilename, unsigned nRun, unsigned nIgnore);
-    virtual double hostCode(const std::string& sourceVertexFilename) = 0;
+    void runBFS(unsigned sourceVertex, unsigned nRun, unsigned nIgnore);
+    virtual double hostCode(unsigned sourceVertex) = 0;
 
 protected:
     BitMatrix* matrix;
@@ -26,13 +26,13 @@ BFSKernel::BFSKernel(BitMatrix* matrix)
 
 }
 
-void BFSKernel::runBFS(std::string sourceVertexFilename, unsigned nRun, unsigned nIgnore)
+void BFSKernel::runBFS(unsigned sourceVertex, unsigned nRun, unsigned nIgnore)
 {
     double total = 0;
 
     for (unsigned i = 0; i < nRun; ++i)
     {
-        double time = hostCode(sourceVertexFilename);
+        double time = hostCode(sourceVertex);
         if (i >= nIgnore)
         {
             total += time;

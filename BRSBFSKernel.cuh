@@ -80,10 +80,7 @@ public:
     BRSBFSKernel& operator=(BRSBFSKernel&& other) noexcept = delete;
     virtual ~BRSBFSKernel() = default;
 
-    virtual double hostCode(const std::string& sourceVertexFilename) final;
-
-private:
-    void initializeSourceVertices(const std::string& sourceVertexFilename, MASK* sourceVertices);
+    virtual double hostCode(unsigned sourceVertex) final;
 };
 
 BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
@@ -92,7 +89,7 @@ BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
 
 }
 
-double BRSBFSKernel::hostCode(const std::string& sourceVertexFilename)
+double BRSBFSKernel::hostCode(unsigned sourceVertex)
 {
     BRS* brs = dynamic_cast<BRS*>(matrix);
     unsigned n = brs->getN();
@@ -143,15 +140,16 @@ double BRSBFSKernel::hostCode(const std::string& sourceVertexFilename)
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(MASK) * noWords))
 
+    unsigned word = sourceVertex / (MASK_BITS);
+    unsigned bit = sourceVertex % (MASK_BITS);
+    MASK temp = (static_cast<MASK>(1) << bit);
+    gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(MASK) * noWords))
+    gpuErrchk(cudaMemset(d_Visited, 0, sizeof(MASK) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
 
-    MASK* sourceVertices = new MASK[noWords];
-    std::fill(sourceVertices, sourceVertices + noWords, 0);
-    this->initializeSourceVertices(sourceVertexFilename, sourceVertices);
-    gpuErrchk(cudaMemcpy(d_Frontier, sourceVertices, sizeof(MASK) * noWords, cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Visited, sourceVertices, sizeof(MASK) * noWords, cudaMemcpyHostToDevice))
-    delete[] sourceVertices;
+    gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
 
     unsigned frontierSize = 1;
     unsigned totalVisited = frontierSize;
@@ -176,7 +174,7 @@ double BRSBFSKernel::hostCode(const std::string& sourceVertexFilename)
         totalVisited += frontierSize;
     }
     double end = omp_get_wtime();
-    std::cout << "Total Frontier: " << totalVisited << std::endl;
+    std::cout << "Total traversed vertex count: " << totalVisited << std::endl;
 
     gpuErrchk(cudaFree(d_SliceSize))
     gpuErrchk(cudaFree(d_NoSliceSets))
@@ -189,24 +187,6 @@ double BRSBFSKernel::hostCode(const std::string& sourceVertexFilename)
     gpuErrchk(cudaFree(d_FrontierNext))
 
     return (end - start);
-}
-
-void BRSBFSKernel::initializeSourceVertices(const std::string& sourceVertexFilename, MASK* sourceVertices)
-{
-    std::ifstream file(sourceVertexFilename);
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Failed to open file from which to read source vertices.");
-    }
-
-    unsigned vertex;
-    while (file >> vertex)
-    {
-        unsigned word = vertex / MASK_BITS;
-        unsigned bit = vertex % MASK_BITS;
-        MASK temp = (static_cast<MASK>(1) << bit);
-        sourceVertices[word] |= temp;
-    }
 }
 
 #endif

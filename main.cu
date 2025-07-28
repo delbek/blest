@@ -6,17 +6,17 @@
 int main()
 {
     bool undirected = true;
-    bool binary = true;
-    CSC csc("/arf/home/delbek/sutensor/144.mtx", undirected, binary);
+    bool binary = false;
+    CSC csc("/arf/home/delbek/sutensor/GAP-road.mtx", undirected, binary);
 
     BRS* brs = new BRS;
     brs->constructFromCSCMatrix(&csc);
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS("/arf/home/delbek/sutensor/144.txt", 5, 4);
+    kernel.runBFS(0, 10, 5);
 
-    brs->save("/arf/home/delbek/sutensor/144.bin");
+    brs->save("/arf/home/delbek/sutensor/GAP-road.bin");
 
     delete brs;
 
@@ -26,11 +26,11 @@ int main()
 /*
 int main()
 {
-    BRS* brs = new BRS("/arf/home/delbek/sutensor/eu-2005.bin");
+    BRS* brs = new BRS("/arf/home/delbek/sutensor/indochina-2004.bin");
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS("/arf/home/delbek/sutensor/eu-2005.txt", 5, 4);
+    kernel.runBFS(0, 10, 5);
 
     delete brs;
 
