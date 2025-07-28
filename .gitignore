@@ -2,3 +2,5 @@
 build/
 *.mtx
 res/
+*.bin
+*.txt

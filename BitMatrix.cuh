@@ -12,6 +12,8 @@ public:
     BitMatrix& operator=(const BitMatrix& other) = default;
     BitMatrix& operator=(BitMatrix&& other) noexcept = default;
     virtual ~BitMatrix() = default;
+
+    virtual void save(std::string filename) = 0;
 };
 
 #endif

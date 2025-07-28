@@ -3,6 +3,9 @@
 
 #include <iostream>
 #include "omp.h"
+#include <cuda_runtime.h>
+#include <cooperative_groups.h>
+using namespace cooperative_groups;
 
 #define M 8
 #define K 128

@@ -10,14 +10,17 @@
 class BRS: public BitMatrix
 {
 public:
+    BRS(std::string filename);
     BRS(unsigned sliceSize = 32);
     BRS(const BRS& other);
     BRS(BRS&& other) noexcept;
     BRS& operator=(const BRS& other);
     BRS& operator=(BRS&& other) noexcept;
-    ~BRS();
+    virtual ~BRS();
 
-    void readFromCSCMatrix(CSC* csc);
+    virtual void save(std::string filename) final;
+
+    void constructFromCSCMatrix(CSC* csc);
     void printBRSData();
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
@@ -37,6 +40,33 @@ private:
     MASK* m_Masks;
 };
 
+BRS::BRS(std::string filename)
+: BitMatrix()
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) 
+    {
+        throw std::runtime_error("Failed to open file from which to load BRS.");
+    }
+
+    // metadata
+    file.read(reinterpret_cast<char*>(&m_N), sizeof(unsigned));
+    file.read(reinterpret_cast<char*>(&m_SliceSize), sizeof(unsigned));
+    file.read(reinterpret_cast<char*>(&m_NoSliceSets), sizeof(unsigned));
+
+    // arrays
+    m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
+    file.read(reinterpret_cast<char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
+    unsigned noSlices = K / m_SliceSize;
+    unsigned totalSlots = m_SliceSetPtrs[m_NoSliceSets] * noSlices;
+    m_RowIds = new unsigned[totalSlots];
+    file.read(reinterpret_cast<char*>(m_RowIds), sizeof(unsigned) * totalSlots);
+    m_Masks = new MASK[totalSlots];
+    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * totalSlots);
+
+    file.close();
+}
+
 BRS::BRS(unsigned sliceSize)
 : BitMatrix(),
   m_SliceSize(sliceSize)
@@ -51,7 +81,7 @@ BRS::BRS(const BRS& other)
   m_NoSliceSets(other.m_NoSliceSets)
 {
     unsigned noSlices = K / m_SliceSize;
-    unsigned totalSlots = (other.m_SliceSetPtrs[m_NoSliceSets]) * noSlices;
+    unsigned totalSlots = other.m_SliceSetPtrs[m_NoSliceSets] * noSlices;
 
     m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
     std::copy(other.m_SliceSetPtrs, other.m_SliceSetPtrs + m_NoSliceSets + 1, m_SliceSetPtrs);
@@ -93,7 +123,7 @@ BRS& BRS::operator=(const BRS& other)
         m_NoSliceSets = other.m_NoSliceSets;
 
         unsigned noSlices = K / m_SliceSize;
-        unsigned totalSlots = (other.m_SliceSetPtrs[m_NoSliceSets]) * noSlices;
+        unsigned totalSlots = other.m_SliceSetPtrs[m_NoSliceSets] * noSlices;
 
         m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
         std::copy(other.m_SliceSetPtrs, other.m_SliceSetPtrs + m_NoSliceSets + 1, m_SliceSetPtrs);
@@ -139,13 +169,13 @@ BRS::~BRS()
     delete[] m_Masks;
 }
 
-void BRS::readFromCSCMatrix(CSC* csc)
+void BRS::constructFromCSCMatrix(CSC* csc)
 {
     m_N = csc->getN();
     unsigned* colPtrs = csc->getColPtrs();
     unsigned* rows = csc->getRows();
 
-    m_NoSliceSets = std::ceil(m_N / K);
+    m_NoSliceSets = (m_N + K - 1) / K;
     m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
     std::fill(m_SliceSetPtrs, m_SliceSetPtrs + m_NoSliceSets + 1, 0);
 
@@ -234,13 +264,24 @@ void BRS::printBRSData()
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices in each set: " << noSlices << std::endl;
 
-    double averageSliceSetLength = 0;
+    double average = 0;
     for (unsigned ss = 0; ss < m_NoSliceSets; ++ss)
     {
-        averageSliceSetLength += (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
+        average += (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
     }
-    averageSliceSetLength /= m_NoSliceSets;
-    std::cout << "Average slice set length: " << averageSliceSetLength << std::endl;
+    average /= m_NoSliceSets;
+    std::cout << "Average slice set length: " << average << std::endl;
+
+    double variance = 0;
+    for (unsigned ss = 0; ss < m_NoSliceSets; ++ss)
+    {
+        unsigned length = (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
+        double diff = length - average;
+        variance += diff * diff;
+    }
+    variance /= m_NoSliceSets;
+    double standardDeviation = std::sqrt(variance);
+    std::cout << "Standard deviation slice set length: " << standardDeviation << std::endl;
 
     unsigned noSetBits = 0;
     for (unsigned i = 0; i < m_SliceSetPtrs[m_NoSliceSets]; ++i)
@@ -251,8 +292,31 @@ void BRS::printBRSData()
         }
     }
     double maskCompressionRatio = noSetBits;
-    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * noSlices * 32);
+    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * K);
     std::cout << "Mask compression ratio: " << maskCompressionRatio << std::endl;
+}
+
+void BRS::save(std::string filename)
+{
+    std::ofstream file(filename, std::ios::binary);
+    if (!file.is_open()) 
+    {
+        throw std::runtime_error("Failed to open file in which to save BRS.");
+    }
+
+    // metadata
+    file.write(reinterpret_cast<const char*>(&m_N), sizeof(unsigned));
+    file.write(reinterpret_cast<const char*>(&m_SliceSize), sizeof(unsigned));
+    file.write(reinterpret_cast<const char*>(&m_NoSliceSets), sizeof(unsigned));
+
+    // arrays
+    file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
+    unsigned noSlices = K / m_SliceSize;
+    unsigned totalSlots = (m_SliceSetPtrs[m_NoSliceSets]) * noSlices;
+    file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * totalSlots);
+    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * totalSlots);
+
+    file.close();
 }
 
 #endif

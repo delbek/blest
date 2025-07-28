@@ -3,7 +3,6 @@
 
 #include "BFSKernel.cuh"
 #include "BRS.cuh"
-#include "cuda_runtime.h"
 
 namespace BRSBFSKernels
 {
@@ -26,34 +25,43 @@ namespace BRSBFSKernels
         unsigned laneID = threadID % WARP_SIZE;
         unsigned groupID = laneID / noSlices;
         unsigned threadIDInGroup = laneID % noSlices;
+        auto warp = coalesced_threads();
         
         for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
         {
-            MASK fragB = frontier[sliceSet * noSlices + threadIDInGroup];
-            unsigned start = sliceSetPtrs[sliceSet];
-            unsigned end = sliceSetPtrs[sliceSet + 1];
-            for (unsigned rowPtr = start; rowPtr < end; rowPtr += M)
+            MASK fragB = frontier[sliceSet * noSlices + threadIDInGroup]; // we do not use the leftover 112 bytes that we fetched from L2, perhaps not big of a deal but try to optimize it later
+            bool any = (fragB != 0);
+            bool cont = warp.any(any);
+            if (cont)
             {
-                unsigned row = (rowPtr + groupID < end) ? rowIds[rowPtr * noSlices + laneID] : 0;
-                MASK mask = (rowPtr + groupID < end) ? masks[rowPtr * noSlices + laneID] : 0;
-                unsigned fragC[2];
-                #pragma unroll 4
-                for (unsigned round = 0; round < noSlices; ++round)
+                unsigned start = sliceSetPtrs[sliceSet];
+                unsigned end = sliceSetPtrs[sliceSet + 1];
+                for (unsigned rowPtr = start; rowPtr < end; rowPtr += M)
                 {
-                    fragC[0] = 0;
-                    fragC[1] = 0;
-                    MASK fragA = threadIDInGroup == round ? mask : 0;
-                    m8n8k128(fragC, fragA, fragB);
-                    if (fragC[0] && threadIDInGroup == round)
+                    unsigned row = (rowPtr + groupID < end) ? rowIds[rowPtr * noSlices + laneID] : 0;
+                    MASK mask = (rowPtr + groupID < end) ? masks[rowPtr * noSlices + laneID] : 0;
+                    unsigned fragC[2];
+                    for (unsigned round = 0; round < noSlices; ++round)
                     {
-                        unsigned word = row / MASK_BITS;
-                        unsigned bit = row % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
+                        any = (threadIDInGroup == round && fragB != 0) ? true : false;
+                        cont = warp.any(any);
+                        if (cont)
                         {
-                            atomicAdd(frontierNextSizePtr, 1);
-                            atomicOr(&frontierNext[word], temp);
+                            fragC[0] = 0;
+                            MASK fragA = threadIDInGroup == round ? mask : 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            if (fragC[0] && threadIDInGroup == round)
+                            {
+                                unsigned word = row / MASK_BITS;
+                                unsigned bit = row % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp); // this visited[word] and the below frontierNext[word] access is quite problematic in that rows each thread is assigned to in the warp can differ dramatically. Smth ordering may fix.
+                                if ((old & temp) == 0)
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                    atomicOr(&frontierNext[word], temp);
+                                }
+                            }
                         }
                     }
                 }
@@ -72,7 +80,10 @@ public:
     BRSBFSKernel& operator=(BRSBFSKernel&& other) noexcept = delete;
     virtual ~BRSBFSKernel() = default;
 
-    virtual double hostCode(unsigned sourceVertex) override;
+    virtual double hostCode(const std::string& sourceVertexFilename) final;
+
+private:
+    void initializeSourceVertices(const std::string& sourceVertexFilename, MASK* sourceVertices);
 };
 
 BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
@@ -81,7 +92,7 @@ BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
 
 }
 
-double BRSBFSKernel::hostCode(unsigned sourceVertex)
+double BRSBFSKernel::hostCode(const std::string& sourceVertexFilename)
 {
     BRS* brs = dynamic_cast<BRS*>(matrix);
     unsigned n = brs->getN();
@@ -132,20 +143,18 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(MASK) * noWords))
 
-    unsigned word = sourceVertex / (MASK_BITS);
-    unsigned bit = sourceVertex % (MASK_BITS);
-    MASK temp = (static_cast<MASK>(1) << bit);
-    gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(MASK) * noWords))
-    gpuErrchk(cudaMemset(d_Visited, 0, sizeof(MASK) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
 
-    gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
+    MASK* sourceVertices = new MASK[noWords];
+    std::fill(sourceVertices, sourceVertices + noWords, 0);
+    this->initializeSourceVertices(sourceVertexFilename, sourceVertices);
+    gpuErrchk(cudaMemcpy(d_Frontier, sourceVertices, sizeof(MASK) * noWords, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Visited, sourceVertices, sizeof(MASK) * noWords, cudaMemcpyHostToDevice))
+    delete[] sourceVertices;
 
     unsigned frontierSize = 1;
-    unsigned totalFrontier = frontierSize;
-    unsigned level = 1;
+    unsigned totalVisited = frontierSize;
     double start = omp_get_wtime();
     while (frontierSize != 0)
     {
@@ -164,11 +173,10 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
         std::swap(d_Frontier, d_FrontierNext);
         gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
         gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
-        std::cout << "Level: " << level++ << " has completed. Next level frontier size is: " << frontierSize << std::endl;
-        totalFrontier += frontierSize;
+        totalVisited += frontierSize;
     }
     double end = omp_get_wtime();
-    std::cout << "Total Frontier: " << totalFrontier << std::endl;
+    std::cout << "Total Frontier: " << totalVisited << std::endl;
 
     gpuErrchk(cudaFree(d_SliceSize))
     gpuErrchk(cudaFree(d_NoSliceSets))
@@ -181,6 +189,24 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaFree(d_FrontierNext))
 
     return (end - start);
+}
+
+void BRSBFSKernel::initializeSourceVertices(const std::string& sourceVertexFilename, MASK* sourceVertices)
+{
+    std::ifstream file(sourceVertexFilename);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Failed to open file from which to read source vertices.");
+    }
+
+    unsigned vertex;
+    while (file >> vertex)
+    {
+        unsigned word = vertex / MASK_BITS;
+        unsigned bit = vertex % MASK_BITS;
+        MASK temp = (static_cast<MASK>(1) << bit);
+        sourceVertices[word] |= temp;
+    }
 }
 
 #endif
