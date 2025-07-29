@@ -6,9 +6,9 @@
 /*
 int main()
 {
-    bool undirected = true;
+    bool undirected = false;
     bool binary = true;
-    CSC csc("/arf/home/delbek/sutensor/delaunay_n20.mtx", undirected, binary);
+    CSC csc("/arf/home/delbek/sutensor/indochina-2004.mtx", undirected, binary);
 
     BRS* brs = new BRS;
     brs->constructFromCSCMatrix(&csc);
@@ -17,7 +17,7 @@ int main()
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
     kernel.runBFS(0, 10, 5);
 
-    brs->save("/arf/home/delbek/sutensor/delaunay_n20.bin");
+    brs->save("/arf/home/delbek/sutensor/indochina-2004.bin");
 
     delete brs;
 

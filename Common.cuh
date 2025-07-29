@@ -7,7 +7,6 @@
 #include <cooperative_groups.h>
 using namespace cooperative_groups;
 
-#define M 8
 #define K 128
 #define MASK unsigned
 const unsigned MASK_BITS = sizeof(MASK) * 8;
