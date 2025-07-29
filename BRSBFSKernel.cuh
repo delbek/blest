@@ -23,7 +23,6 @@ namespace BRSBFSKernels
         unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
         unsigned warpID = threadID / WARP_SIZE;
         unsigned laneID = threadID % WARP_SIZE;
-        unsigned groupID = laneID / noSlices;
         unsigned threadIDInGroup = laneID % noSlices;
         auto warp = coalesced_threads();
         
@@ -36,10 +35,11 @@ namespace BRSBFSKernels
             {
                 unsigned start = sliceSetPtrs[sliceSet];
                 unsigned end = sliceSetPtrs[sliceSet + 1];
-                for (unsigned rowPtr = start; rowPtr < end; rowPtr += M)
+                for (unsigned rowPtr = start; rowPtr < end; rowPtr += WARP_SIZE)
                 {
-                    unsigned row = (rowPtr + groupID < end) ? rowIds[rowPtr * noSlices + laneID] : 0;
-                    MASK mask = (rowPtr + groupID < end) ? masks[rowPtr * noSlices + laneID] : 0;
+                    unsigned idx = rowPtr + laneID;
+                    unsigned row = (idx < end) ? rowIds[idx] : 0;
+                    MASK mask = (idx < end) ? masks[idx] : 0;
                     unsigned fragC[2];
                     for (unsigned round = 0; round < noSlices; ++round)
                     {
@@ -94,12 +94,10 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     BRS* brs = dynamic_cast<BRS*>(matrix);
     unsigned n = brs->getN();
     unsigned sliceSize = brs->getSliceSize();
-    unsigned noSlices = K / sliceSize;
     unsigned noSliceSets = brs->getNoSliceSets();
     unsigned* sliceSetPtrs = brs->getSliceSetPtrs();
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
-    unsigned totalSlots = sliceSetPtrs[noSliceSets] * noSlices;
 
     int gridSize, blockSize;
     gpuErrchk(cudaOccupancyMaxPotentialBlockSize(
@@ -124,14 +122,14 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMalloc(&d_SliceSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1)))
-    gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * totalSlots))
-    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * totalSlots))
+    gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets]))
+    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * sliceSetPtrs[noSliceSets]))
 
     gpuErrchk(cudaMemcpy(d_SliceSize, &sliceSize, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * totalSlots, cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * totalSlots, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets], cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * sliceSetPtrs[noSliceSets], cudaMemcpyHostToDevice))
 
     // algorithm
     unsigned noWords = (n + MASK_BITS - 1) / MASK_BITS;

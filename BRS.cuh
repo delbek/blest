@@ -57,12 +57,10 @@ BRS::BRS(std::string filename)
     // arrays
     m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
     file.read(reinterpret_cast<char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
-    unsigned noSlices = K / m_SliceSize;
-    unsigned totalSlots = m_SliceSetPtrs[m_NoSliceSets] * noSlices;
-    m_RowIds = new unsigned[totalSlots];
-    file.read(reinterpret_cast<char*>(m_RowIds), sizeof(unsigned) * totalSlots);
-    m_Masks = new MASK[totalSlots];
-    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * totalSlots);
+    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
+    file.read(reinterpret_cast<char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
+    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
+    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets]);
 
     file.close();
 }
@@ -80,17 +78,14 @@ BRS::BRS(const BRS& other)
   m_SliceSize(other.m_SliceSize),
   m_NoSliceSets(other.m_NoSliceSets)
 {
-    unsigned noSlices = K / m_SliceSize;
-    unsigned totalSlots = other.m_SliceSetPtrs[m_NoSliceSets] * noSlices;
-
     m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
     std::copy(other.m_SliceSetPtrs, other.m_SliceSetPtrs + m_NoSliceSets + 1, m_SliceSetPtrs);
 
-    m_RowIds = new unsigned[totalSlots];
-    std::copy(other.m_RowIds, other.m_RowIds + totalSlots, m_RowIds);
+    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
+    std::copy(other.m_RowIds, other.m_RowIds + m_SliceSetPtrs[m_NoSliceSets], m_RowIds);
 
-    m_Masks = new MASK[totalSlots];
-    std::copy(other.m_Masks, other.m_Masks + totalSlots, m_Masks);
+    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
+    std::copy(other.m_Masks, other.m_Masks + m_SliceSetPtrs[m_NoSliceSets], m_Masks);
 }
 
 BRS::BRS(BRS&& other) noexcept
@@ -122,17 +117,14 @@ BRS& BRS::operator=(const BRS& other)
         m_SliceSize = other.m_SliceSize;
         m_NoSliceSets = other.m_NoSliceSets;
 
-        unsigned noSlices = K / m_SliceSize;
-        unsigned totalSlots = other.m_SliceSetPtrs[m_NoSliceSets] * noSlices;
-
         m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
         std::copy(other.m_SliceSetPtrs, other.m_SliceSetPtrs + m_NoSliceSets + 1, m_SliceSetPtrs);
 
-        m_RowIds = new unsigned[totalSlots];
-        std::copy(other.m_RowIds, other.m_RowIds + totalSlots, m_RowIds);
+        m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
+        std::copy(other.m_RowIds, other.m_RowIds + m_SliceSetPtrs[m_NoSliceSets], m_RowIds);
 
-        m_Masks = new MASK[totalSlots];
-        std::copy(other.m_Masks, other.m_Masks + totalSlots, m_Masks);
+        m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
+        std::copy(other.m_Masks, other.m_Masks + m_SliceSetPtrs[m_NoSliceSets], m_Masks);
     }
     return *this;
 }
@@ -230,10 +222,10 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet) 
     {
-        m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + sliceSetLengths[sliceSet];
+        m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + sliceSetLengths[sliceSet] * noSlices;
     }
-    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets] * noSlices];
-    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets] * noSlices];
+    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
+    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
 
     #pragma omp parallel for num_threads(omp_get_max_threads())
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
@@ -244,13 +236,13 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             {
                 if (i < sliceSetMasks[sliceSet][slice].size())
                 {
-                    m_RowIds[(m_SliceSetPtrs[sliceSet] + i) * noSlices + slice] = sliceSetMasks[sliceSet][slice][i].first;
-                    m_Masks[(m_SliceSetPtrs[sliceSet] + i) * noSlices + slice] = sliceSetMasks[sliceSet][slice][i].second;
+                    m_RowIds[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = sliceSetMasks[sliceSet][slice][i].first;
+                    m_Masks[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = sliceSetMasks[sliceSet][slice][i].second;
                 }
                 else
                 {
-                    m_RowIds[(m_SliceSetPtrs[sliceSet] + i) * noSlices + slice] = UNSIGNED_MAX;
-                    m_Masks[(m_SliceSetPtrs[sliceSet] + i) * noSlices + slice] = 0;
+                    m_RowIds[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = UNSIGNED_MAX;
+                    m_Masks[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = 0;
                 }
             }
         }
@@ -270,7 +262,7 @@ void BRS::printBRSData()
         average += (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
     }
     average /= m_NoSliceSets;
-    std::cout << "Average slice set length: " << average << std::endl;
+    std::cout << "Average number of slices in each set " << average << std::endl;
 
     double variance = 0;
     for (unsigned ss = 0; ss < m_NoSliceSets; ++ss)
@@ -281,18 +273,15 @@ void BRS::printBRSData()
     }
     variance /= m_NoSliceSets;
     double standardDeviation = std::sqrt(variance);
-    std::cout << "Standard deviation slice set length: " << standardDeviation << std::endl;
+    std::cout << "Standard deviation of the number of slices in each set: " << standardDeviation << std::endl;
 
     unsigned noSetBits = 0;
     for (unsigned i = 0; i < m_SliceSetPtrs[m_NoSliceSets]; ++i)
     {
-        for (unsigned j = 0; j < noSlices; ++j)
-        {
-            noSetBits += __builtin_popcount(m_Masks[i * noSlices + j]);
-        }
+        noSetBits += __builtin_popcount(m_Masks[i]);
     }
     double maskCompressionRatio = noSetBits;
-    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * K);
+    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * MASK_BITS);
     std::cout << "Mask compression ratio: " << maskCompressionRatio << std::endl;
 }
 
@@ -311,10 +300,8 @@ void BRS::save(std::string filename)
 
     // arrays
     file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
-    unsigned noSlices = K / m_SliceSize;
-    unsigned totalSlots = (m_SliceSetPtrs[m_NoSliceSets]) * noSlices;
-    file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * totalSlots);
-    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * totalSlots);
+    file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
+    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets]);
 
     file.close();
 }

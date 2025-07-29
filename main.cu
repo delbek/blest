@@ -3,11 +3,12 @@
 #include "CSC.cuh"
 #include "BRSBFSKernel.cuh"
 
+/*
 int main()
 {
     bool undirected = true;
-    bool binary = false;
-    CSC csc("/arf/home/delbek/sutensor/GAP-road.mtx", undirected, binary);
+    bool binary = true;
+    CSC csc("/arf/home/delbek/sutensor/delaunay_n20.mtx", undirected, binary);
 
     BRS* brs = new BRS;
     brs->constructFromCSCMatrix(&csc);
@@ -16,17 +17,17 @@ int main()
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
     kernel.runBFS(0, 10, 5);
 
-    brs->save("/arf/home/delbek/sutensor/GAP-road.bin");
+    brs->save("/arf/home/delbek/sutensor/delaunay_n20.bin");
 
     delete brs;
 
     return 0;
 }
+*/
 
-/*
 int main()
 {
-    BRS* brs = new BRS("/arf/home/delbek/sutensor/indochina-2004.bin");
+    BRS* brs = new BRS("/arf/home/delbek/sutensor/delaunay_n20.bin");
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
@@ -36,4 +37,3 @@ int main()
 
     return 0;
 }
-*/
