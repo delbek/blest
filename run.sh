@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --partition=kolyoz-cuda
 #SBATCH --gres=gpu:1
-#SBATCH --time=0-6:00:00
+#SBATCH --time=0-1:00:00
 #SBATCH --output=/arf/home/delbek/sutensor/res/out-%j.out
 #SBATCH --error=/arf/home/delbek/sutensor/res/out-%j.err
 #SBATCH --export=NONE

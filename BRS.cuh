@@ -59,8 +59,9 @@ BRS::BRS(std::string filename)
     file.read(reinterpret_cast<char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
     m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
     file.read(reinterpret_cast<char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
-    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets]);
+    unsigned noMasks = m_SliceSize / MASK_BITS;
+    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets] * noMasks];
+    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets] * noMasks);
 
     file.close();
 }
@@ -175,10 +176,15 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     {
         throw std::runtime_error("Tensor core instruction width, K, must be a multiple of the selected slice size.");
     }
+    if (m_SliceSize < MASK_BITS)
+    {
+        throw std::runtime_error("Minimum supported slice size is equal to 32.");
+    }
     unsigned noSlices = K / m_SliceSize;
+    unsigned noMasks = m_SliceSize / MASK_BITS;
 
     std::vector<unsigned> sliceSetLengths(m_NoSliceSets, 0);
-    std::vector<std::vector<std::vector<std::pair<unsigned, MASK>>>> sliceSetMasks(m_NoSliceSets, std::vector<std::vector<std::pair<unsigned, MASK>>>(noSlices));
+    std::vector<std::vector<std::vector<std::pair<unsigned, std::vector<MASK>>>>> sliceSetMasks(m_NoSliceSets, std::vector<std::vector<std::pair<unsigned, std::vector<MASK>>>>(noSlices));
 
     #pragma omp parallel for num_threads(omp_get_max_threads())
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
@@ -199,21 +205,28 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
             for (unsigned i = 0; i < m_N; ++i)
             {
-                MASK mask = 0; // nearby slices must be merged if MASK_BITS != m_SliceSize
+                std::vector<MASK> masks(noMasks, 0);
                 for (unsigned j = sliceStart; j < sliceEnd; ++j)
                 {
-                    while (rows[ptrs[j - sliceStart]] < i && ptrs[j - sliceStart] < colPtrs[j + 1])
+                    unsigned idx = j - sliceStart;
+                    unsigned mask = idx / MASK_BITS;
+                    unsigned bit = idx % MASK_BITS;
+                    while (rows[ptrs[idx]] < i && ptrs[idx] < colPtrs[j + 1])
                     {
-                        ++ptrs[j - sliceStart];
+                        ++ptrs[idx];
                     }
-                    if (rows[ptrs[j - sliceStart]] == i && ptrs[j - sliceStart] < colPtrs[j + 1])
+                    if (rows[ptrs[idx]] == i && ptrs[idx] < colPtrs[j + 1])
                     {
-                        mask |= (static_cast<MASK>(1) << (j - sliceStart));
+                        masks[mask] |= (static_cast<MASK>(1) << (bit));
                     }
                 }
-                if (mask != 0)
+                for (const auto& mask: masks)
                 {
-                    sliceSetMasks[sliceSet][slice].emplace_back(i, mask);
+                    if (mask != 0)
+                    {
+                        sliceSetMasks[sliceSet][slice].emplace_back(i, masks);
+                        break;
+                    }
                 }
             }
             sliceSetLengths[sliceSet] = std::max(sliceSetLengths[sliceSet], unsigned(sliceSetMasks[sliceSet][slice].size()));
@@ -225,7 +238,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + sliceSetLengths[sliceSet] * noSlices;
     }
     m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
-    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
+    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets] * noMasks];
 
     #pragma omp parallel for num_threads(omp_get_max_threads())
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
@@ -237,12 +250,18 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 if (i < sliceSetMasks[sliceSet][slice].size())
                 {
                     m_RowIds[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = sliceSetMasks[sliceSet][slice][i].first;
-                    m_Masks[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = sliceSetMasks[sliceSet][slice][i].second;
+                    for (unsigned j = 0; j < noMasks; ++j)
+                    {
+                        m_Masks[(m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice) * noMasks + j] = sliceSetMasks[sliceSet][slice][i].second[j];
+                    }
                 }
                 else
                 {
                     m_RowIds[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = UNSIGNED_MAX;
-                    m_Masks[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = 0;
+                    for (unsigned j = 0; j < noMasks; ++j)
+                    {
+                        m_Masks[(m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice) * noMasks + j] = 0;
+                    }
                 }
             }
         }
@@ -252,11 +271,13 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 void BRS::printBRSData()
 {
     unsigned noSlices = K / m_SliceSize;
+    unsigned noMasks = m_SliceSize / MASK_BITS;
 
     std::cout << "MASK size: " << MASK_BITS << std::endl;
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices in each set: " << noSlices << std::endl;
+    std::cout << "Number of masks in each slice: " << noMasks << std::endl;
 
     double average = 0;
     for (unsigned ss = 0; ss < m_NoSliceSets; ++ss)
@@ -280,10 +301,14 @@ void BRS::printBRSData()
     unsigned noSetBits = 0;
     for (unsigned i = 0; i < m_SliceSetPtrs[m_NoSliceSets]; ++i)
     {
-        noSetBits += __builtin_popcount(m_Masks[i]);
+        for (unsigned j = 0; j < noMasks; ++j)
+        {
+            noSetBits += __builtin_popcount(m_Masks[i * noMasks + j]);
+        }
     }
+    std::cout << "Set bits: " << noSetBits << std::endl;
     double maskCompressionRatio = noSetBits;
-    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * MASK_BITS);
+    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * noMasks * MASK_BITS);
     std::cout << "Mask compression ratio: " << maskCompressionRatio << std::endl;
 }
 
@@ -294,7 +319,7 @@ void BRS::save(std::string filename)
     {
         throw std::runtime_error("Failed to open file in which to save BRS.");
     }
-
+    
     // metadata
     file.write(reinterpret_cast<const char*>(&m_N), sizeof(unsigned));
     file.write(reinterpret_cast<const char*>(&m_SliceSize), sizeof(unsigned));
@@ -303,7 +328,8 @@ void BRS::save(std::string filename)
     // arrays
     file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
     file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets]);
+    unsigned noMasks = m_SliceSize / MASK_BITS;
+    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets] * noMasks);
 
     file.close();
 }

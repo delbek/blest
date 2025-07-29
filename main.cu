@@ -5,17 +5,17 @@
 
 int main()
 {
-    bool undirected = false;
+    bool undirected = true;
     bool binary = true;
-    CSC csc("/arf/home/delbek/sutensor/wikipedia-20070206.mtx", undirected, binary);
+    CSC csc("/arf/home/delbek/sutensor/delaunay_n20.mtx", undirected, binary);
 
-    BRS* brs = new BRS;
+    BRS* brs = new BRS(32);
     brs->constructFromCSCMatrix(&csc);
     brs->printBRSData();
-    brs->save("/arf/home/delbek/sutensor/wikipedia-20070206.bin");
+    brs->save("/arf/home/delbek/sutensor/delaunay_n20.bin");
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS("/arf/home/delbek/sutensor/wikipedia-20070206.txt", 10, 5);
+    kernel.runBFS("/arf/home/delbek/sutensor/delaunay_n20.txt", 10, 5);
 
     delete brs;
 
