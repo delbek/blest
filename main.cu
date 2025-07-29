@@ -3,37 +3,36 @@
 #include "CSC.cuh"
 #include "BRSBFSKernel.cuh"
 
-/*
 int main()
 {
     bool undirected = false;
     bool binary = true;
-    CSC csc("/arf/home/delbek/sutensor/indochina-2004.mtx", undirected, binary);
+    CSC csc("/arf/home/delbek/sutensor/wikipedia-20070206.mtx", undirected, binary);
 
     BRS* brs = new BRS;
     brs->constructFromCSCMatrix(&csc);
     brs->printBRSData();
+    brs->save("/arf/home/delbek/sutensor/wikipedia-20070206.bin");
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS(0, 10, 5);
-
-    brs->save("/arf/home/delbek/sutensor/indochina-2004.bin");
+    kernel.runBFS("/arf/home/delbek/sutensor/wikipedia-20070206.txt", 10, 5);
 
     delete brs;
 
     return 0;
 }
-*/
 
+/*
 int main()
 {
     BRS* brs = new BRS("/arf/home/delbek/sutensor/delaunay_n20.bin");
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS(0, 10, 5);
+    kernel.runBFS("/arf/home/delbek/sutensor/delaunay_n20.txt", 10, 5);
 
     delete brs;
 
     return 0;
 }
+*/

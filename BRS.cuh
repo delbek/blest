@@ -199,7 +199,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
             for (unsigned i = 0; i < m_N; ++i)
             {
-                MASK mask = 0;
+                MASK mask = 0; // nearby slices must be merged if MASK_BITS != m_SliceSize
                 for (unsigned j = sliceStart; j < sliceEnd; ++j)
                 {
                     while (rows[ptrs[j - sliceStart]] < i && ptrs[j - sliceStart] < colPtrs[j + 1])
@@ -253,6 +253,8 @@ void BRS::printBRSData()
 {
     unsigned noSlices = K / m_SliceSize;
 
+    std::cout << "MASK size: " << MASK_BITS << std::endl;
+    std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices in each set: " << noSlices << std::endl;
 

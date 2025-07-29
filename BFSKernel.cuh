@@ -13,7 +13,7 @@ public:
     BFSKernel& operator=(BFSKernel&& other) noexcept = delete;
     virtual ~BFSKernel() = default;
 
-    void runBFS(unsigned sourceVertex, unsigned nRun, unsigned nIgnore);
+    void runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore);
     virtual double hostCode(unsigned sourceVertex) = 0;
 
 protected:
@@ -26,22 +26,38 @@ BFSKernel::BFSKernel(BitMatrix* matrix)
 
 }
 
-void BFSKernel::runBFS(unsigned sourceVertex, unsigned nRun, unsigned nIgnore)
+void BFSKernel::runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore)
 {
-    double total = 0;
-
-    for (unsigned i = 0; i < nRun; ++i)
+    std::ifstream file(sourceVerticesFilename);
+    if (!file.is_open())
     {
-        double time = hostCode(sourceVertex);
-        if (i >= nIgnore)
-        {
-            total += time;
-        }
+        throw std::runtime_error("Failed to open file from which to read source vertices.");
     }
 
-    total /= (nRun - nIgnore);
+    double total = 0;
+    unsigned iter = 0;
+    unsigned sourceVertex;
+    while (file >> sourceVertex)
+    {
+        double run = 0;
+        for (unsigned i = 0; i < nRun; ++i)
+        {
+            double time = hostCode(sourceVertex);
+            if (i >= nIgnore)
+            {
+                run += time;
+            }
+        }
+    
+        run /= (nRun - nIgnore);
+        total += run;
+        ++iter;
+    }
+    total /= iter;
 
     std::cout << "Average time took per BFS iteration: " << total * 1000 << " ms." << std::endl;
+
+    file.close();
 }
 
 #endif

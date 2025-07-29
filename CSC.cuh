@@ -64,6 +64,8 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
         }
     }
 
+    file.close();
+
     std::cout << "Number of vertices: " << m_N << std::endl;
     std::cout << "Number of edges: " << nnzs.size() << std::endl;
     std::cout << "Sparsity: " << double(nnzs.size()) / double(m_N * m_N) << std::endl;
