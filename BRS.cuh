@@ -12,14 +12,13 @@ class BRS: public BitMatrix
 public:
     BRS(std::string filename);
     BRS(unsigned sliceSize = 32);
-    BRS(const BRS& other);
-    BRS(BRS&& other) noexcept;
-    BRS& operator=(const BRS& other);
-    BRS& operator=(BRS&& other) noexcept;
+    BRS(const BRS& other) = delete;
+    BRS(BRS&& other) noexcept = delete;
+    BRS& operator=(const BRS& other) = delete;
+    BRS& operator=(BRS&& other) noexcept = delete;
     virtual ~BRS();
 
     virtual void save(std::string filename) final;
-
     void constructFromCSCMatrix(CSC* csc);
     void printBRSData();
 
@@ -73,93 +72,33 @@ BRS::BRS(unsigned sliceSize)
 
 }
 
-BRS::BRS(const BRS& other)
-: BitMatrix(other),
-  m_N(other.m_N),
-  m_SliceSize(other.m_SliceSize),
-  m_NoSliceSets(other.m_NoSliceSets)
-{
-    m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
-    std::copy(other.m_SliceSetPtrs, other.m_SliceSetPtrs + m_NoSliceSets + 1, m_SliceSetPtrs);
-
-    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
-    std::copy(other.m_RowIds, other.m_RowIds + m_SliceSetPtrs[m_NoSliceSets], m_RowIds);
-
-    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
-    std::copy(other.m_Masks, other.m_Masks + m_SliceSetPtrs[m_NoSliceSets], m_Masks);
-}
-
-BRS::BRS(BRS&& other) noexcept
-: BitMatrix(std::move(other)),
-  m_N(other.m_N),
-  m_SliceSize(other.m_SliceSize),
-  m_NoSliceSets(other.m_NoSliceSets),
-  m_SliceSetPtrs(other.m_SliceSetPtrs),
-  m_RowIds(other.m_RowIds),
-  m_Masks(other.m_Masks)
-{
-    other.m_SliceSetPtrs = nullptr;
-    other.m_RowIds = nullptr;
-    other.m_Masks = nullptr;
-    other.m_N = 0;
-    other.m_SliceSize = 0;
-}
-
-BRS& BRS::operator=(const BRS& other)
-{
-    if (this != &other)
-    {
-        BitMatrix::operator=(other);
-        delete[] m_SliceSetPtrs;
-        delete[] m_RowIds;
-        delete[] m_Masks;
-
-        m_N = other.m_N;
-        m_SliceSize = other.m_SliceSize;
-        m_NoSliceSets = other.m_NoSliceSets;
-
-        m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
-        std::copy(other.m_SliceSetPtrs, other.m_SliceSetPtrs + m_NoSliceSets + 1, m_SliceSetPtrs);
-
-        m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
-        std::copy(other.m_RowIds, other.m_RowIds + m_SliceSetPtrs[m_NoSliceSets], m_RowIds);
-
-        m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets]];
-        std::copy(other.m_Masks, other.m_Masks + m_SliceSetPtrs[m_NoSliceSets], m_Masks);
-    }
-    return *this;
-}
-
-BRS& BRS::operator=(BRS&& other) noexcept
-{
-    if (this != &other)
-    {
-        BitMatrix::operator=(std::move(other));
-        delete[] m_SliceSetPtrs;
-        delete[] m_RowIds;
-        delete[] m_Masks;
-
-        m_N = other.m_N;
-        m_SliceSize = other.m_SliceSize;
-        m_NoSliceSets = other.m_NoSliceSets;
-        m_SliceSetPtrs = other.m_SliceSetPtrs;
-        m_RowIds = other.m_RowIds;
-        m_Masks = other.m_Masks;
-
-        other.m_SliceSetPtrs = nullptr;
-        other.m_RowIds = nullptr;
-        other.m_Masks = nullptr;
-        other.m_N = 0;
-        other.m_SliceSize = 0;
-    }
-    return *this;
-}
-
 BRS::~BRS()
 {
     delete[] m_SliceSetPtrs;
     delete[] m_RowIds;
     delete[] m_Masks;
+}
+
+void BRS::save(std::string filename)
+{
+    std::ofstream file(filename, std::ios::binary);
+    if (!file.is_open()) 
+    {
+        throw std::runtime_error("Failed to open file in which to save BRS.");
+    }
+    
+    // metadata
+    file.write(reinterpret_cast<const char*>(&m_N), sizeof(unsigned));
+    file.write(reinterpret_cast<const char*>(&m_SliceSize), sizeof(unsigned));
+    file.write(reinterpret_cast<const char*>(&m_NoSliceSets), sizeof(unsigned));
+
+    // arrays
+    file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
+    file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
+    unsigned noMasks = m_SliceSize / MASK_BITS;
+    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets] * noMasks);
+
+    file.close();
 }
 
 void BRS::constructFromCSCMatrix(CSC* csc)
@@ -276,7 +215,7 @@ void BRS::printBRSData()
     std::cout << "MASK size: " << MASK_BITS << std::endl;
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
-    std::cout << "Number of slices in each set: " << noSlices << std::endl;
+    std::cout << "Number of slices in each set row: " << noSlices << std::endl;
     std::cout << "Number of masks in each slice: " << noMasks << std::endl;
 
     double average = 0;
@@ -310,28 +249,6 @@ void BRS::printBRSData()
     double maskCompressionRatio = noSetBits;
     maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * noMasks * MASK_BITS);
     std::cout << "Mask compression ratio: " << maskCompressionRatio << std::endl;
-}
-
-void BRS::save(std::string filename)
-{
-    std::ofstream file(filename, std::ios::binary);
-    if (!file.is_open()) 
-    {
-        throw std::runtime_error("Failed to open file in which to save BRS.");
-    }
-    
-    // metadata
-    file.write(reinterpret_cast<const char*>(&m_N), sizeof(unsigned));
-    file.write(reinterpret_cast<const char*>(&m_SliceSize), sizeof(unsigned));
-    file.write(reinterpret_cast<const char*>(&m_NoSliceSets), sizeof(unsigned));
-
-    // arrays
-    file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
-    file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    unsigned noMasks = m_SliceSize / MASK_BITS;
-    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets] * noMasks);
-
-    file.close();
 }
 
 #endif

@@ -7,10 +7,10 @@ class BitMatrix
 {
 public:
     BitMatrix() = default;
-    BitMatrix(const BitMatrix& other) = default;
-    BitMatrix(BitMatrix&& other) noexcept = default;
-    BitMatrix& operator=(const BitMatrix& other) = default;
-    BitMatrix& operator=(BitMatrix&& other) noexcept = default;
+    BitMatrix(const BitMatrix& other) = delete;
+    BitMatrix(BitMatrix&& other) noexcept = delete;
+    BitMatrix& operator=(const BitMatrix& other) = delete;
+    BitMatrix& operator=(BitMatrix&& other) noexcept = delete;
     virtual ~BitMatrix() = default;
 
     virtual void save(std::string filename) = 0;

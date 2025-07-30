@@ -251,9 +251,9 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
                                                 kernelPtr,
                                                 0,
                                                 0));
-    //std::cout << "Grid Size: " << gridSize << std::endl;
-    //std::cout << "Block Size: " << blockSize << std::endl;
-    //std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
+    std::cout << "Grid Size: " << gridSize << std::endl;
+    std::cout << "Block Size: " << blockSize << std::endl;
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_NoSliceSets;
     unsigned* d_SliceSetPtrs;

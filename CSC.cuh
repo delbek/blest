@@ -10,11 +10,13 @@ class CSC
 {
 public:
     CSC(std::string filename, bool undirected, bool binary);
-    CSC(const CSC& other);
-    CSC(CSC&& other) noexcept;
-    CSC& operator=(const CSC& other);
-    CSC& operator=(CSC&& other) noexcept;
+    CSC(const CSC& other) = delete;
+    CSC(CSC&& other) noexcept = delete;
+    CSC& operator=(const CSC& other) = delete;
+    CSC& operator=(CSC&& other) noexcept = delete;
     ~CSC();
+
+    void reorderFromFile(std::string filename);
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned* getColPtrs() {return m_ColPtrs;}
@@ -100,68 +102,70 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
     }
 }
 
-CSC::CSC(const CSC& other)
-    : m_N(other.m_N), m_NNZ(other.m_NNZ)
-{
-    m_ColPtrs = new unsigned[m_N + 1];
-    std::copy(other.m_ColPtrs, other.m_ColPtrs + m_N + 1, m_ColPtrs);
-
-    m_Rows = new unsigned[m_NNZ];
-    std::copy(other.m_Rows, other.m_Rows + m_NNZ, m_Rows);
-}
-
-CSC::CSC(CSC&& other) noexcept
-    : m_N(other.m_N), m_NNZ(other.m_NNZ), m_ColPtrs(other.m_ColPtrs), m_Rows(other.m_Rows)
-{
-    other.m_ColPtrs = nullptr;
-    other.m_Rows = nullptr;
-    other.m_N = 0;
-    other.m_NNZ = 0;
-}
-
-CSC& CSC::operator=(const CSC& other)
-{
-    if (this != &other)
-    {
-        delete[] m_ColPtrs;
-        delete[] m_Rows;
-
-        m_N = other.m_N;
-        m_NNZ = other.m_NNZ;
-
-        m_ColPtrs = new unsigned[m_N + 1];
-        std::copy(other.m_ColPtrs, other.m_ColPtrs + m_N + 1, m_ColPtrs);
-
-        m_Rows = new unsigned[m_NNZ];
-        std::copy(other.m_Rows, other.m_Rows + m_NNZ, m_Rows);
-    }
-    return *this;
-}
-
-CSC& CSC::operator=(CSC&& other) noexcept
-{
-    if (this != &other)
-    {
-        delete[] m_ColPtrs;
-        delete[] m_Rows;
-
-        m_N = other.m_N;
-        m_NNZ = other.m_NNZ;
-        m_ColPtrs = other.m_ColPtrs;
-        m_Rows = other.m_Rows;
-
-        other.m_ColPtrs = nullptr;
-        other.m_Rows = nullptr;
-        other.m_N = 0;
-        other.m_NNZ = 0;
-    }
-    return *this;
-}
-
 CSC::~CSC()
 {
     delete[] m_ColPtrs;
     delete[] m_Rows;
+}
+
+void CSC::reorderFromFile(std::string filename)
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) 
+    {
+        throw std::runtime_error("Failed to open file from which to load reordering.");
+    }
+
+    unsigned* inversePermutation = new unsigned[m_N];
+    file.read(reinterpret_cast<char*>(inversePermutation), sizeof(unsigned) * m_N);
+    file.close();
+
+    unsigned* newColPtrs = new unsigned[m_N + 1];
+    unsigned* newRows = new unsigned[m_NNZ];
+
+    std::vector<std::pair<unsigned, unsigned>> nnzs;
+    nnzs.reserve(m_NNZ);
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        unsigned newCol = inversePermutation[j];
+        for (unsigned ptr = m_ColPtrs[j]; ptr < m_ColPtrs[j + 1]; ++ptr)
+        {
+            unsigned newRow = inversePermutation[m_Rows[ptr]];
+            nnzs.emplace_back(newRow, newCol);
+        }
+    }
+    
+    std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
+    {
+        if (a.second == b.second)
+        {
+            return a.first < b.first;
+        }
+        else
+        {
+            return a.second < b.second;
+        }
+    });
+
+    std::fill(newColPtrs, newColPtrs + m_N + 1, 0);
+
+    for (unsigned iter = 0; iter < m_NNZ; ++iter)
+    {
+        ++newColPtrs[nnzs[iter].second + 1];
+        newRows[iter] = nnzs[iter].first;
+    }
+
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        newColPtrs[j + 1] += newColPtrs[j];
+    }
+
+    delete[] m_ColPtrs;
+    delete[] m_Rows;
+    m_ColPtrs = newColPtrs;
+    m_Rows = newRows;
+
+    delete[] inversePermutation;
 }
 
 #endif

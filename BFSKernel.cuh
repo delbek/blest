@@ -13,8 +13,8 @@ public:
     BFSKernel& operator=(BFSKernel&& other) noexcept = delete;
     virtual ~BFSKernel() = default;
 
-    void runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore);
     virtual double hostCode(unsigned sourceVertex) = 0;
+    void runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore);
 
 protected:
     BitMatrix* matrix;

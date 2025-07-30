@@ -8,11 +8,12 @@ int main()
     bool undirected = true;
     bool binary = true;
     CSC csc("/arf/home/delbek/sutensor/delaunay_n20.mtx", undirected, binary);
+    csc.reorderFromFile("/arf/home/delbek/sutensor/PTH-8-CN-RCM_delaunay_n20.bin");
 
-    BRS* brs = new BRS(32);
+    BRS* brs = new BRS(128);
     brs->constructFromCSCMatrix(&csc);
-    brs->printBRSData();
     brs->save("/arf/home/delbek/sutensor/delaunay_n20.bin");
+    brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
     kernel.runBFS("/arf/home/delbek/sutensor/delaunay_n20.txt", 10, 5);
