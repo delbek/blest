@@ -8,17 +8,18 @@ int main()
     bool undirected = true;
     bool binary = true;
     CSC csc("/arf/home/delbek/sutensor/delaunay_n20.mtx", undirected, binary);
-    //csc.reorderFromFile("/arf/home/delbek/sutensor/PTH-8-CN-RCM_delaunay_n20.bin");
+    unsigned* inversePermutation = csc.reorderFromFile("/arf/home/delbek/sutensor/rcm32-delaunay_n20.bin");
 
     BRS* brs = new BRS(32);
     brs->constructFromCSCMatrix(&csc);
-    brs->save("/arf/home/delbek/sutensor/delaunay_n20.bin");
+    brs->save("/arf/home/delbek/sutensor/natural32-delaunay_n20.bin");
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS("/arf/home/delbek/sutensor/delaunay_n20.txt", 10, 5);
+    kernel.runBFS("/arf/home/delbek/sutensor/delaunay_n20.txt", 1, 0, inversePermutation);
 
     delete brs;
+    delete[] inversePermutation;
 
     return 0;
 }
@@ -26,7 +27,7 @@ int main()
 /*
 int main()
 {
-    BRS* brs = new BRS("/arf/home/delbek/sutensor/delaunay_n20.bin");
+    BRS* brs = new BRS("/arf/home/delbek/sutensor/natural32-delaunay_n20.bin");
     brs->printBRSData();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));

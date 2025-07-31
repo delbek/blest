@@ -233,14 +233,32 @@ void BRS::printBRSData()
     std::cout << "Standard deviation of the number of slices in each set: " << standardDeviation << std::endl;
 
     unsigned noSetBits = 0;
-    for (unsigned i = 0; i < (m_SliceSetPtrs[m_NoSliceSets] / noMasks); ++i)
+    unsigned noChunks = 10;
+    unsigned chunkSize = (m_NoSliceSets + noChunks - 1) / noChunks;
+    for (unsigned q = 0; q < noChunks; ++q)
     {
-        noSetBits += __builtin_popcount(m_Masks[i]);
+        unsigned start = q * chunkSize;
+        unsigned end = std::min(m_NoSliceSets, start + chunkSize);
+
+        unsigned totalSliceSeen = 0;
+        unsigned thisChunkSetBits = 0;
+        for (unsigned set = start; set < end; ++set)
+        {
+            for (unsigned ptr = m_SliceSetPtrs[set] / noMasks; ptr < m_SliceSetPtrs[set + 1] / noMasks; ++ptr)
+            {
+                thisChunkSetBits += __builtin_popcount(m_Masks[ptr]);
+            }
+            totalSliceSeen += (m_SliceSetPtrs[set + 1] - m_SliceSetPtrs[set]);
+        }
+
+        noSetBits += thisChunkSetBits;
+        double compressionEff = thisChunkSetBits;
+        compressionEff /= (totalSliceSeen * m_SliceSize);
+        std::cout << "Chunk: " << q << " - Slice Count: " << totalSliceSeen << " - Bits: " << thisChunkSetBits << " - Compression Efficiency: " << compressionEff << std::endl;
     }
-    std::cout << "Set bits: " << noSetBits << std::endl;
-    double maskCompressionRatio = noSetBits;
-    maskCompressionRatio /= ((m_SliceSetPtrs[m_NoSliceSets] / noMasks) * MASK_BITS);
-    std::cout << "Mask compression ratio: " << maskCompressionRatio << std::endl;
+    double compressionEff = noSetBits;
+    compressionEff /= ((m_SliceSetPtrs[m_NoSliceSets] / noMasks) * MASK_BITS);
+    std::cout << "Total - Set Bits: " << noSetBits << " - Compression Efficiency: " << compressionEff << std::endl;
 }
 
 #endif

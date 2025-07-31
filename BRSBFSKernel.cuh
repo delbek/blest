@@ -18,8 +18,9 @@ namespace BRSBFSKernels
     {
         auto warp = coalesced_threads();
         auto grid = this_grid();
-        unsigned noWarps = (gridDim.x * blockDim.x) / WARP_SIZE;
         unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        unsigned noThreads = gridDim.x * blockDim.x;
+        unsigned noWarps = noThreads / WARP_SIZE;
         unsigned warpID = threadID / WARP_SIZE;
         unsigned laneID = threadID % WARP_SIZE;
 
@@ -35,9 +36,7 @@ namespace BRSBFSKernels
             for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
             {
                 MASK fragB = frontier[sliceSet]; // we do not use the leftover 124 bytes that we fetched from L2, perhaps not big of a deal but try to optimize it later
-                bool any = (fragB != 0);
-                bool cont = warp.any(any);
-                if (cont)
+                if (fragB)
                 {
                     unsigned start = sliceSetPtrs[sliceSet];
                     unsigned end = sliceSetPtrs[sliceSet + 1];
@@ -54,23 +53,21 @@ namespace BRSBFSKernels
                         unsigned fragC[2];
                         for (unsigned round = 0; round < 4; ++round)
                         {
-                            any = (threadIDInGroup == round && fragB != 0) ? true : false;
-                            cont = warp.any(any);
-                            if (cont)
+                            fragC[0] = 0;
+                            MASK fragA = threadIDInGroup == round ? mask : 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            if (threadIDInGroup == round && fragC[0])
                             {
-                                fragC[0] = 0;
-                                MASK fragA = threadIDInGroup == round ? mask : 0;
-                                m8n8k128(fragC, fragA, fragB);
-                                if (threadIDInGroup == round && fragC[0])
+                                unsigned word = row / MASK_BITS;
+                                unsigned bit = row % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp); // this visited[word] and the below frontierNext[word] access is quite problematic in that rows each thread is assigned to in the warp can differ dramatically. Smth ordering may fix.
+                                if ((old & temp) == 0)
                                 {
-                                    unsigned word = row / MASK_BITS;
-                                    unsigned bit = row % MASK_BITS;
-                                    MASK temp = (static_cast<MASK>(1) << bit);
-                                    MASK old = atomicOr(&visited[word], temp); // this visited[word] and the below frontierNext[word] access is quite problematic in that rows each thread is assigned to in the warp can differ dramatically. Smth ordering may fix.
-                                    if ((old & temp) == 0)
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if (old == 0) // be careful that when slice size changes this code must be altered as well
                                     {
                                         ++myFrontierNextSize;
-                                        atomicOr(&frontierNext[word], temp);
                                     }
                                 }
                             }
@@ -78,6 +75,7 @@ namespace BRSBFSKernels
                     }
                 }
             }
+
             for (unsigned offset = (WARP_SIZE >> 1); offset > 0; offset >>= 1)
             {
                 myFrontierNextSize += warp.shfl_down(myFrontierNextSize, offset);
@@ -87,11 +85,13 @@ namespace BRSBFSKernels
                 atomicAdd(frontierNextSizePtr, myFrontierNextSize);
             }
             grid.sync();
+
             if (laneID == 0)
             {
                 myFrontierNextSize = *frontierNextSizePtr;
             }
             grid.sync();
+
             myFrontierNextSize = warp.shfl(myFrontierNextSize, 0);
             cont = (myFrontierNextSize != 0);
             if (threadID == 0)
@@ -101,9 +101,12 @@ namespace BRSBFSKernels
             MASK* temp = frontier;
             frontier = frontierNext;
             frontierNext = temp;
-            if (threadID < noWords)
+            for (unsigned i = threadID * 4; i < noWords; i += (noThreads * 4))
             {
-                frontierNext[threadID] = 0;
+                frontierNext[i] = 0;
+                frontierNext[i + 1] = 0;
+                frontierNext[i + 2] = 0;
+                frontierNext[i + 3] = 0;
             }
             grid.sync();
         }

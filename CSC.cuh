@@ -16,7 +16,7 @@ public:
     CSC& operator=(CSC&& other) noexcept = delete;
     ~CSC();
 
-    void reorderFromFile(std::string filename);
+    unsigned* reorderFromFile(std::string filename);
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned* getColPtrs() {return m_ColPtrs;}
@@ -108,17 +108,28 @@ CSC::~CSC()
     delete[] m_Rows;
 }
 
-void CSC::reorderFromFile(std::string filename)
+unsigned* CSC::reorderFromFile(std::string filename)
 {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) 
     {
-        throw std::runtime_error("Failed to open file from which to load reordering.");
+        std::cout << "Failed to open file from which to load reordering. Proceeding with natural ordering." << std::endl;
+        return nullptr;
     }
 
     unsigned* inversePermutation = new unsigned[m_N];
     file.read(reinterpret_cast<char*>(inversePermutation), sizeof(unsigned) * m_N);
+    unsigned* check = new unsigned[m_N];
+    file.read(reinterpret_cast<char*>(check), sizeof(unsigned) * m_N);
     file.close();
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        if (inversePermutation[i] != check[i])
+        {
+            throw std::runtime_error("Graph reordering must be symmetric and the current ordering is not.");
+        }
+    }
+    delete[] check;
 
     unsigned* newColPtrs = new unsigned[m_N + 1];
     unsigned* newRows = new unsigned[m_NNZ];
@@ -165,7 +176,7 @@ void CSC::reorderFromFile(std::string filename)
     m_ColPtrs = newColPtrs;
     m_Rows = newRows;
 
-    delete[] inversePermutation;
+    return inversePermutation;
 }
 
 #endif
