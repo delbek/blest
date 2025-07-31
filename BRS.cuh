@@ -58,9 +58,9 @@ BRS::BRS(std::string filename)
     file.read(reinterpret_cast<char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
     m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
     file.read(reinterpret_cast<char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    unsigned noMasks = m_SliceSize / MASK_BITS;
-    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets] * noMasks];
-    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets] * noMasks);
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+    m_Masks = new MASK[(m_SliceSetPtrs[m_NoSliceSets] / noMasks)];
+    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * (m_SliceSetPtrs[m_NoSliceSets] / noMasks));
 
     file.close();
 }
@@ -95,8 +95,8 @@ void BRS::save(std::string filename)
     // arrays
     file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
     file.write(reinterpret_cast<const char*>(m_RowIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    unsigned noMasks = m_SliceSize / MASK_BITS;
-    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * m_SliceSetPtrs[m_NoSliceSets] * noMasks);
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * (m_SliceSetPtrs[m_NoSliceSets] / noMasks));
 
     file.close();
 }
@@ -107,116 +107,111 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     unsigned* colPtrs = csc->getColPtrs();
     unsigned* rows = csc->getRows();
 
-    m_NoSliceSets = (m_N + K - 1) / K;
+    m_NoSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
     m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
     std::fill(m_SliceSetPtrs, m_SliceSetPtrs + m_NoSliceSets + 1, 0);
 
-    if (K % m_SliceSize != 0)
+    if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0 || MASK_BITS % m_SliceSize != 0)
     {
-        throw std::runtime_error("Tensor core instruction width, K, must be a multiple of the selected slice size.");
+        throw std::runtime_error("Invalid slice size provided.");
     }
-    if (m_SliceSize < MASK_BITS)
-    {
-        throw std::runtime_error("Minimum supported slice size is equal to 32.");
-    }
-    unsigned noSlices = K / m_SliceSize;
-    unsigned noMasks = m_SliceSize / MASK_BITS;
+    unsigned noMasks = MASK_BITS / m_SliceSize;
 
-    std::vector<unsigned> sliceSetLengths(m_NoSliceSets, 0);
-    std::vector<std::vector<std::vector<std::pair<unsigned, std::vector<MASK>>>>> sliceSetMasks(m_NoSliceSets, std::vector<std::vector<std::pair<unsigned, std::vector<MASK>>>>(noSlices));
+    std::vector<std::vector<unsigned>> rowIds(m_NoSliceSets);
+
+    std::vector<std::vector<MASK>> masks(m_NoSliceSets);
 
     #pragma omp parallel for num_threads(omp_get_max_threads())
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
     {
-        unsigned sliceSetStart = sliceSet * K;
-        unsigned sliceSetEnd = std::min(m_N, sliceSetStart + K);
-
-        for (unsigned slice = 0; slice < noSlices; ++slice)
+        unsigned sliceSetColStart = sliceSet * m_SliceSize;
+        unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
+        
+        std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
+        for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
         {
-            unsigned sliceStart = sliceSetStart + slice * m_SliceSize;
-            unsigned sliceEnd = std::min(sliceSetEnd, sliceStart + m_SliceSize);
-
-            std::vector<unsigned> ptrs(sliceEnd - sliceStart);
-            for (unsigned j = sliceStart; j < sliceEnd; ++j)
-            {
-                ptrs[j - sliceStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
-            }
-
-            for (unsigned i = 0; i < m_N; ++i)
-            {
-                std::vector<MASK> masks(noMasks, 0);
-                for (unsigned j = sliceStart; j < sliceEnd; ++j)
-                {
-                    unsigned idx = j - sliceStart;
-                    unsigned mask = idx / MASK_BITS;
-                    unsigned bit = idx % MASK_BITS;
-                    while (rows[ptrs[idx]] < i && ptrs[idx] < colPtrs[j + 1])
-                    {
-                        ++ptrs[idx];
-                    }
-                    if (rows[ptrs[idx]] == i && ptrs[idx] < colPtrs[j + 1])
-                    {
-                        masks[mask] |= (static_cast<MASK>(1) << (bit));
-                    }
-                }
-                for (const auto& mask: masks)
-                {
-                    if (mask != 0)
-                    {
-                        sliceSetMasks[sliceSet][slice].emplace_back(i, masks);
-                        break;
-                    }
-                }
-            }
-            sliceSetLengths[sliceSet] = std::max(sliceSetLengths[sliceSet], unsigned(sliceSetMasks[sliceSet][slice].size()));
+            ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
         }
+
+        unsigned cumulativeCounter = noMasks;
+        MASK cumulative = 0;
+        for (unsigned i = 0; i < m_N; ++i)
+        {
+            MASK individual = 0;
+            for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
+            {
+                unsigned idx = j - sliceSetColStart;
+                while (rows[ptrs[idx]] < i && ptrs[idx] < colPtrs[j + 1])
+                {
+                    ++ptrs[idx];
+                }
+                if (rows[ptrs[idx]] == i && ptrs[idx] < colPtrs[j + 1])
+                {
+                    individual |= (static_cast<MASK>(1) << (idx));
+                }
+            }
+            if (individual != 0)
+            {
+                unsigned byteIdx = noMasks - cumulativeCounter;
+                cumulative |= (static_cast<MASK>(individual) << (8 * byteIdx));
+                --cumulativeCounter;
+                rowIds[sliceSet].emplace_back(i);
+            }
+            if (cumulativeCounter == 0)
+            {
+                masks[sliceSet].emplace_back(cumulative);
+                cumulative = 0;
+                cumulativeCounter = noMasks;
+            }
+        }
+
+        if (cumulativeCounter != noMasks)
+        {
+            for (int i = cumulativeCounter; i > 0; --i)
+            {
+                rowIds[sliceSet].emplace_back(0);
+            }
+            masks[sliceSet].emplace_back(cumulative);
+        }
+        assert(rowIds[sliceSet].size() == masks[sliceSet].size() * noMasks);
     }
 
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet) 
     {
-        m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + sliceSetLengths[sliceSet] * noSlices;
+        m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + rowIds[sliceSet].size();
     }
-    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
-    m_Masks = new MASK[m_SliceSetPtrs[m_NoSliceSets] * noMasks];
 
-    #pragma omp parallel for num_threads(omp_get_max_threads())
+    m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
+    unsigned idx = 0;
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
     {
-        for (unsigned i = 0; i < sliceSetLengths[sliceSet]; ++i)
+        for (unsigned i = 0; i < rowIds[sliceSet].size(); ++i)
         {
-            for (unsigned slice = 0; slice < noSlices; ++slice)
-            {
-                if (i < sliceSetMasks[sliceSet][slice].size())
-                {
-                    m_RowIds[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = sliceSetMasks[sliceSet][slice][i].first;
-                    for (unsigned j = 0; j < noMasks; ++j)
-                    {
-                        m_Masks[(m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice) * noMasks + j] = sliceSetMasks[sliceSet][slice][i].second[j];
-                    }
-                }
-                else
-                {
-                    m_RowIds[m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice] = UNSIGNED_MAX;
-                    for (unsigned j = 0; j < noMasks; ++j)
-                    {
-                        m_Masks[(m_SliceSetPtrs[sliceSet] + (i * noSlices) + slice) * noMasks + j] = 0;
-                    }
-                }
-            }
+            m_RowIds[idx++] = rowIds[sliceSet][i];
+        }
+    }
+
+    m_Masks = new MASK[(m_SliceSetPtrs[m_NoSliceSets] / noMasks)];
+    idx = 0;
+    for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
+    {
+        for (unsigned i = 0; i < masks[sliceSet].size(); ++i)
+        {
+            m_Masks[idx++] = masks[sliceSet][i];
         }
     }
 }
 
 void BRS::printBRSData()
 {
+    unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned noSlices = K / m_SliceSize;
-    unsigned noMasks = m_SliceSize / MASK_BITS;
 
     std::cout << "MASK size: " << MASK_BITS << std::endl;
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices in each set row: " << noSlices << std::endl;
-    std::cout << "Number of masks in each slice: " << noMasks << std::endl;
+    std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 
     double average = 0;
     for (unsigned ss = 0; ss < m_NoSliceSets; ++ss)
@@ -238,16 +233,13 @@ void BRS::printBRSData()
     std::cout << "Standard deviation of the number of slices in each set: " << standardDeviation << std::endl;
 
     unsigned noSetBits = 0;
-    for (unsigned i = 0; i < m_SliceSetPtrs[m_NoSliceSets]; ++i)
+    for (unsigned i = 0; i < (m_SliceSetPtrs[m_NoSliceSets] / noMasks); ++i)
     {
-        for (unsigned j = 0; j < noMasks; ++j)
-        {
-            noSetBits += __builtin_popcount(m_Masks[i * noMasks + j]);
-        }
+        noSetBits += __builtin_popcount(m_Masks[i]);
     }
     std::cout << "Set bits: " << noSetBits << std::endl;
     double maskCompressionRatio = noSetBits;
-    maskCompressionRatio /= (m_SliceSetPtrs[m_NoSliceSets] * noMasks * MASK_BITS);
+    maskCompressionRatio /= ((m_SliceSetPtrs[m_NoSliceSets] / noMasks) * MASK_BITS);
     std::cout << "Mask compression ratio: " << maskCompressionRatio << std::endl;
 }
 

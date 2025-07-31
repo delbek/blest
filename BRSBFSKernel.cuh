@@ -34,7 +34,7 @@ namespace BRSBFSKernels
             unsigned myFrontierNextSize = 0;
             for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
             {
-                MASK fragB = frontier[sliceSet * 4 + threadIDInGroup]; // we do not use the leftover 112 bytes that we fetched from L2, perhaps not big of a deal but try to optimize it later
+                MASK fragB = frontier[sliceSet]; // we do not use the leftover 124 bytes that we fetched from L2, perhaps not big of a deal but try to optimize it later
                 bool any = (fragB != 0);
                 bool cont = warp.any(any);
                 if (cont)
@@ -108,101 +108,6 @@ namespace BRSBFSKernels
             grid.sync();
         }
     }
-
-    __global__ void BRSBFS128(  const unsigned* const __restrict__ noSliceSetsPtr,
-                                const unsigned* const __restrict__ sliceSetPtrs,
-                                const unsigned* const __restrict__ rowIds,
-                                const MASK* const __restrict__ masks,
-                                const unsigned* const __restrict__ noWordsPtr,
-                                MASK* __restrict__ frontier,
-                                MASK* const __restrict__ visited,
-                                unsigned* const __restrict__ frontierNextSizePtr,
-                                MASK* __restrict__ frontierNext)
-    {
-        auto warp = coalesced_threads();
-        auto grid = this_grid();
-        unsigned noWarps = (gridDim.x * blockDim.x) / WARP_SIZE;
-        unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
-        unsigned warpID = threadID / WARP_SIZE;
-        unsigned laneID = threadID % WARP_SIZE;
-
-        unsigned noWords = *noWordsPtr;
-        unsigned noSliceSets = *noSliceSetsPtr;
-
-        unsigned threadIDInGroup = laneID % 4;
-        unsigned groupID = laneID / 4;
-        
-        bool cont = true;
-        while (cont)
-        {
-            unsigned myFrontierNextSize = 0;
-            for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
-            {
-                MASK fragB = frontier[sliceSet * 4 + threadIDInGroup]; // we do not use the leftover 112 bytes that we fetched from L2, perhaps not big of a deal but try to optimize it later
-                bool any = (fragB != 0);
-                bool cont = warp.any(any);
-                if (cont)
-                {
-                    unsigned start = sliceSetPtrs[sliceSet];
-                    unsigned end = sliceSetPtrs[sliceSet + 1];
-                    for (unsigned slicePtr = start; slicePtr < end; slicePtr += 8)
-                    {
-                        unsigned sliceIdx = slicePtr + groupID;
-                        unsigned row = (sliceIdx < end) ? rowIds[sliceIdx] : 0;
-                        unsigned maskIdx = sliceIdx * 4 + threadIDInGroup;
-                        MASK fragA = (maskIdx < (end * 4)) ? masks[maskIdx] : 0;
-                        unsigned fragC[2];
-                        fragC[0] = 0;
-                        m8n8k128(fragC, fragA, fragB);
-                        for (unsigned offset = 2; offset > 0; offset >>= 1)
-                        {
-                            fragC[0] |= warp.shfl_down(fragC[0], offset);
-                        }
-                        if (threadIDInGroup == 0 && fragC[0])
-                        {
-                            unsigned word = row / MASK_BITS;
-                            unsigned bit = row % MASK_BITS;
-                            MASK temp = (static_cast<MASK>(1) << bit);
-                            MASK old = atomicOr(&visited[word], temp); // this visited[word] and the below frontierNext[word] access is quite problematic in that rows each thread is assigned to in the warp can differ dramatically. Smth ordering may fix.
-                            if ((old & temp) == 0)
-                            {
-                                ++myFrontierNextSize;
-                                atomicOr(&frontierNext[word], temp);
-                            }
-                        }
-                    }
-                }
-            }
-            for (unsigned offset = (WARP_SIZE >> 1); offset > 0; offset >>= 1)
-            {
-                myFrontierNextSize += warp.shfl_down(myFrontierNextSize, offset);
-            }
-            if (laneID == 0)
-            {
-                atomicAdd(frontierNextSizePtr, myFrontierNextSize);
-            }
-            grid.sync();
-            if (laneID == 0)
-            {
-                myFrontierNextSize = *frontierNextSizePtr;
-            }
-            grid.sync();
-            myFrontierNextSize = warp.shfl(myFrontierNextSize, 0);
-            cont = (myFrontierNextSize != 0);
-            if (threadID == 0)
-            {
-                *frontierNextSizePtr = 0;
-            }
-            MASK* temp = frontier;
-            frontier = frontierNext;
-            frontierNext = temp;
-            if (threadID < noWords)
-            {
-                frontierNext[threadID] = 0;
-            }
-            grid.sync();
-        }
-    }
 };
 
 class BRSBFSKernel: public BFSKernel
@@ -239,10 +144,6 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     {
         kernelPtr = (void*)BRSBFSKernels::BRSBFS32;
     }
-    if (sliceSize == 128)
-    {
-        kernelPtr = (void*)BRSBFSKernels::BRSBFS128;
-    }
 
     int gridSize, blockSize;
     gpuErrchk(cudaOccupancyMaxPotentialBlockSize(
@@ -266,17 +167,17 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* d_FrontierNextSize;
     MASK* d_FrontierNext;
 
-    unsigned noMasks = sliceSize / MASK_BITS;
+    unsigned noMasks = MASK_BITS / sliceSize;
     // data structure
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1)))
     gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets]))
-    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * sliceSetPtrs[noSliceSets] * noMasks))
+    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks)))
 
     gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets], cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * sliceSetPtrs[noSliceSets] * noMasks, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks), cudaMemcpyHostToDevice))
 
     // algorithm
     unsigned noWords = (n + MASK_BITS - 1) / MASK_BITS;
