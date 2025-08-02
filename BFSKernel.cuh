@@ -14,7 +14,7 @@ public:
     virtual ~BFSKernel() = default;
 
     virtual double hostCode(unsigned sourceVertex) = 0;
-    void runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore, unsigned* inversePermutation);
+    void runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore, unsigned* inversePermutation = nullptr);
 
 protected:
     BitMatrix* matrix;

@@ -6,6 +6,164 @@
 
 namespace BRSBFSKernels
 {
+    __global__ void BRSBFS8(    const unsigned* const __restrict__ noSliceSetsPtr,
+                                const unsigned* const __restrict__ sliceSetPtrs,
+                                const unsigned* const __restrict__ rowIds,
+                                const MASK* const __restrict__ masks,
+                                const unsigned* const __restrict__ noWordsPtr,
+                                MASK* __restrict__ frontier,
+                                MASK* const __restrict__ visited,
+                                unsigned* const __restrict__ frontierNextSizePtr,
+                                MASK* __restrict__ frontierNext)
+    {
+        auto warp = coalesced_threads();
+        auto grid = this_grid();
+        unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        unsigned noThreads = gridDim.x * blockDim.x;
+        unsigned noWarps = noThreads / WARP_SIZE;
+        unsigned warpID = threadID / WARP_SIZE;
+        unsigned laneID = threadID % WARP_SIZE;
+
+        unsigned noWords = *noWordsPtr;
+        unsigned noSliceSets = *noSliceSetsPtr;
+
+        unsigned threadIDInGroup = laneID % 4;
+
+        bool cont = true;
+        while (cont)
+        {
+            for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
+            {
+                unsigned shift = (sliceSet % 4) * 8;
+                MASK fragB = ((frontier[sliceSet / 4] >> shift) & 0x000000FF);
+                if (fragB)
+                {
+                    fragB *= 0x01010101;
+                    unsigned tileStart = sliceSetPtrs[sliceSet] / 4;
+                    unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
+                    for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
+                    {
+                        unsigned idx = tilePtr + laneID;
+                        uint4 rows = {0, 0, 0, 0};
+                        MASK mask = 0;
+                        if (idx < tileEnd)
+                        {
+                            rows = reinterpret_cast<const uint4*>(rowIds)[idx];
+                            mask = masks[idx];
+                        }
+                        unsigned fragC[2];
+                        for (unsigned round = 0; round < 4; ++round)
+                        {
+                            fragC[0] = 0;
+                            MASK fragA = threadIDInGroup == round ? (mask & 0x000000FF) : 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            if (threadIDInGroup == round && fragC[0])
+                            {
+                                unsigned word = rows.x / MASK_BITS;
+                                unsigned bit = rows.x % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0x000000FF) == 0) 
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
+                            }
+                        }
+                        for (unsigned round = 0; round < 4; ++round)
+                        {
+                            fragC[0] = 0;
+                            MASK fragA = threadIDInGroup == round ? (mask & 0x0000FF00) : 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            if (threadIDInGroup == round && fragC[0])
+                            {
+                                unsigned word = rows.y / MASK_BITS;
+                                unsigned bit = rows.y % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0x0000FF00) == 0) 
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
+                            }
+                        }
+                        for (unsigned round = 0; round < 4; ++round)
+                        {
+                            fragC[0] = 0;
+                            MASK fragA = threadIDInGroup == round ? (mask & 0x00FF0000) : 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            if (threadIDInGroup == round && fragC[0])
+                            {
+                                unsigned word = rows.z / MASK_BITS;
+                                unsigned bit = rows.z % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0x00FF0000) == 0) 
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
+                            }
+                        }
+                        for (unsigned round = 0; round < 4; ++round)
+                        {
+                            fragC[0] = 0;
+                            MASK fragA = threadIDInGroup == round ? (mask & 0xFF000000) : 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            if (threadIDInGroup == round && fragC[0])
+                            {
+                                unsigned word = rows.w / MASK_BITS;
+                                unsigned bit = rows.w % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0xFF000000) == 0) 
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            grid.sync();
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+
+            if (cont)
+            {
+                // frontier swap
+                MASK* temp = frontier;
+                frontier = frontierNext;
+                frontierNext = temp;
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+                //
+            }
+            grid.sync();
+        }
+    }
+
     __global__ void BRSBFS32(   const unsigned* const __restrict__ noSliceSetsPtr,
                                 const unsigned* const __restrict__ sliceSetPtrs,
                                 const unsigned* const __restrict__ rowIds,
@@ -32,7 +190,6 @@ namespace BRSBFSKernels
         bool cont = true;
         while (cont)
         {
-            unsigned myFrontierNextSize = 0;
             for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
             {
                 MASK fragB = frontier[sliceSet]; // we do not use the leftover 124 bytes that we fetched from L2, perhaps not big of a deal but try to optimize it later
@@ -67,7 +224,7 @@ namespace BRSBFSKernels
                                     old = atomicOr(&frontierNext[word], temp);
                                     if (old == 0) // be careful that when slice size changes this code must be altered as well
                                     {
-                                        ++myFrontierNextSize;
+                                        atomicAdd(frontierNextSizePtr, 1);
                                     }
                                 }
                             }
@@ -76,37 +233,25 @@ namespace BRSBFSKernels
                 }
             }
 
-            for (unsigned offset = (WARP_SIZE >> 1); offset > 0; offset >>= 1)
-            {
-                myFrontierNextSize += warp.shfl_down(myFrontierNextSize, offset);
-            }
-            if (laneID == 0)
-            {
-                atomicAdd(frontierNextSizePtr, myFrontierNextSize);
-            }
             grid.sync();
-
-            if (laneID == 0)
-            {
-                myFrontierNextSize = *frontierNextSizePtr;
-            }
+            cont = (*frontierNextSizePtr != 0);
             grid.sync();
-
-            myFrontierNextSize = warp.shfl(myFrontierNextSize, 0);
-            cont = (myFrontierNextSize != 0);
             if (threadID == 0)
             {
                 *frontierNextSizePtr = 0;
             }
-            MASK* temp = frontier;
-            frontier = frontierNext;
-            frontierNext = temp;
-            for (unsigned i = threadID * 4; i < noWords; i += (noThreads * 4))
+
+            if (cont)
             {
-                frontierNext[i] = 0;
-                frontierNext[i + 1] = 0;
-                frontierNext[i + 2] = 0;
-                frontierNext[i + 3] = 0;
+                // frontier swap
+                MASK* temp = frontier;
+                frontier = frontierNext;
+                frontierNext = temp;
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+                //
             }
             grid.sync();
         }
@@ -143,9 +288,17 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     MASK* masks = brs->getMasks();
 
     void* kernelPtr = nullptr;
-    if (sliceSize == 32)
+    if (sliceSize == 8)
+    {
+        kernelPtr = (void*)BRSBFSKernels::BRSBFS8;
+    }
+    else if (sliceSize == 32)
     {
         kernelPtr = (void*)BRSBFSKernels::BRSBFS32;
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size.");
     }
 
     int gridSize, blockSize;
@@ -155,9 +308,6 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
                                                 kernelPtr,
                                                 0,
                                                 0));
-    std::cout << "Grid Size: " << gridSize << std::endl;
-    std::cout << "Block Size: " << blockSize << std::endl;
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_NoSliceSets;
     unsigned* d_SliceSetPtrs;
@@ -190,14 +340,14 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(MASK) * noWords))
 
-    unsigned word = sourceVertex / (MASK_BITS);
-    unsigned bit = sourceVertex % (MASK_BITS);
-    MASK temp = (static_cast<MASK>(1) << bit);
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(MASK) * noWords))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(MASK) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
 
+    unsigned word = sourceVertex / (MASK_BITS);
+    unsigned bit = sourceVertex % (MASK_BITS);
+    MASK temp = (static_cast<MASK>(1) << bit);
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))

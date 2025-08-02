@@ -118,7 +118,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     unsigned noMasks = MASK_BITS / m_SliceSize;
 
     std::vector<std::vector<unsigned>> rowIds(m_NoSliceSets);
-
     std::vector<std::vector<MASK>> masks(m_NoSliceSets);
 
     #pragma omp parallel for num_threads(omp_get_max_threads())
@@ -210,6 +209,7 @@ void BRS::printBRSData()
     std::cout << "MASK size: " << MASK_BITS << std::endl;
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
+    std::cout << "Number of slices: " << m_SliceSetPtrs[m_NoSliceSets] << std::endl;
     std::cout << "Number of slices in each set row: " << noSlices << std::endl;
     std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 

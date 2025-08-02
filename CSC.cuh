@@ -119,17 +119,7 @@ unsigned* CSC::reorderFromFile(std::string filename)
 
     unsigned* inversePermutation = new unsigned[m_N];
     file.read(reinterpret_cast<char*>(inversePermutation), sizeof(unsigned) * m_N);
-    unsigned* check = new unsigned[m_N];
-    file.read(reinterpret_cast<char*>(check), sizeof(unsigned) * m_N);
     file.close();
-    for (unsigned i = 0; i < m_N; ++i)
-    {
-        if (inversePermutation[i] != check[i])
-        {
-            throw std::runtime_error("Graph reordering must be symmetric and the current ordering is not.");
-        }
-    }
-    delete[] check;
 
     unsigned* newColPtrs = new unsigned[m_N + 1];
     unsigned* newRows = new unsigned[m_NNZ];

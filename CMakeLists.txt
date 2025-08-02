@@ -42,6 +42,7 @@ add_executable(sutensor
         main.cu
         Common.cuh
         CSC.cuh
+        CSC.cuh
         BitMatrix.cuh
         BRS.cuh
         BFSKernel.cuh
