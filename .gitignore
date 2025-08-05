@@ -1,6 +1,8 @@
 .vscode/
 build/
-*.mtx
 res/
+*.mtx
 *.bin
 *.txt
+*.out
+*.err

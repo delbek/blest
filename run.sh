@@ -47,4 +47,5 @@ make
 cd ..
 
 srun ./build/sutensor
+#valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --track-origins=yes --leak-resolution=high --num-callers=25 ./build/sutensor
 #srun compute-sanitizer --tool memcheck ./build/sutensor

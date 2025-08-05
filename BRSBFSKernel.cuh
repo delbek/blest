@@ -6,6 +6,248 @@
 
 namespace BRSBFSKernels
 {
+    __global__ void BRSBFS8Enhanced(    const unsigned* const __restrict__ noSliceSetsPtr,
+                                        const unsigned* const __restrict__ sliceSetPtrs,
+                                        const unsigned* const __restrict__ rowIds,
+                                        const MASK* const __restrict__ masks,
+                                        const unsigned* const __restrict__ noWordsPtr,
+                                        MASK* __restrict__ frontier,
+                                        MASK* const __restrict__ visited,
+                                        unsigned* const __restrict__ frontierNextSizePtr,
+                                        MASK* __restrict__ frontierNext)
+    {
+        auto warp = coalesced_threads();
+        auto grid = this_grid();
+        unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        unsigned noThreads = gridDim.x * blockDim.x;
+        unsigned noWarps = noThreads / WARP_SIZE;
+        unsigned warpID = threadID / WARP_SIZE;
+        unsigned laneID = threadID % WARP_SIZE;
+
+        unsigned noWords = *noWordsPtr;
+        unsigned noSliceSets = *noSliceSetsPtr;
+
+        bool cont = true;
+        while (cont)
+        {
+            for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
+            {
+                unsigned shift = (sliceSet % 4) * 8;
+                MASK fragB = ((frontier[sliceSet / 4] >> shift) & 0x000000FF);
+                if (fragB)
+                {
+                    fragB *= 0x01010101;
+                    unsigned tileStart = sliceSetPtrs[sliceSet] / 4;
+                    unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
+                    for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
+                    {
+                        unsigned idx = tilePtr + laneID;
+                        uint4 rows = {0, 0, 0, 0};
+                        MASK mask = 0;
+                        if (idx < tileEnd)
+                        {
+                            rows = reinterpret_cast<const uint4*>(rowIds)[idx];
+                            mask = masks[idx];
+                        }
+
+                        if (laneID != 0 && laneID != 9 && laneID != 18 && laneID != 27)
+                        {
+                            fragB = 0;
+                        }
+
+                        unsigned fragC[2];
+                        fragC[0] = 0;
+
+                        MASK fragA = (mask & 0x000000FF);
+                        m8n8k128(fragC, fragA, fragB);
+                        if (fragC[0])
+                        {
+                            unsigned word = rows.x / MASK_BITS;
+                            unsigned bit = rows.x % MASK_BITS;
+                            MASK temp = (static_cast<MASK>(1) << bit);
+                            MASK old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                if ((old & 0x000000FF) == 0) 
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
+                            }
+                        }
+                        fragA = (mask & 0x0000FF00);
+                        m8n8k128(fragC, fragA, fragB);
+                        if (fragC[0])
+                        {
+                            unsigned word = rows.y / MASK_BITS;
+                            unsigned bit = rows.y % MASK_BITS;
+                            MASK temp = (static_cast<MASK>(1) << bit);
+                            MASK old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                if ((old & 0x0000FF00) == 0) 
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
+                            }
+                        }
+                        fragA = (mask & 0x00FF0000);
+                        m8n8k128(fragC, fragA, fragB);
+                        if (fragC[0])
+                        {
+                            unsigned word = rows.z / MASK_BITS;
+                            unsigned bit = rows.z % MASK_BITS;
+                            MASK temp = (static_cast<MASK>(1) << bit);
+                            MASK old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                if ((old & 0x00FF0000) == 0) 
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
+                            }
+                        }
+                        fragA = (mask & 0xFF000000);
+                        m8n8k128(fragC, fragA, fragB);
+                        if (fragC[0])
+                        {
+                            unsigned word = rows.w / MASK_BITS;
+                            unsigned bit = rows.w % MASK_BITS;
+                            MASK temp = (static_cast<MASK>(1) << bit);
+                            MASK old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                if ((old & 0xFF000000) == 0) 
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            grid.sync();
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+
+            if (cont)
+            {
+                // frontier swap
+                MASK* temp = frontier;
+                frontier = frontierNext;
+                frontierNext = temp;
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+                //
+            }
+            grid.sync();
+        }
+    }
+
+    __global__ void BRSBFS32Enhanced(   const unsigned* const __restrict__ noSliceSetsPtr,
+                                        const unsigned* const __restrict__ sliceSetPtrs,
+                                        const unsigned* const __restrict__ rowIds,
+                                        const MASK* const __restrict__ masks,
+                                        const unsigned* const __restrict__ noWordsPtr,
+                                        MASK* __restrict__ frontier,
+                                        MASK* const __restrict__ visited,
+                                        unsigned* const __restrict__ frontierNextSizePtr,
+                                        MASK* __restrict__ frontierNext)
+    {
+        auto warp = coalesced_threads();
+        auto grid = this_grid();
+        unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        unsigned noThreads = gridDim.x * blockDim.x;
+        unsigned noWarps = noThreads / WARP_SIZE;
+        unsigned warpID = threadID / WARP_SIZE;
+        unsigned laneID = threadID % WARP_SIZE;
+
+        unsigned noWords = *noWordsPtr;
+        unsigned noSliceSets = *noSliceSetsPtr;
+
+        bool cont = true;
+        while (cont)
+        {
+            for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
+            {
+                MASK fragB = frontier[sliceSet];
+                if (fragB)
+                {
+                    unsigned start = sliceSetPtrs[sliceSet];
+                    unsigned end = sliceSetPtrs[sliceSet + 1];
+                    for (unsigned slicePtr = start; slicePtr < end; slicePtr += WARP_SIZE)
+                    {
+                        unsigned idx = slicePtr + laneID;
+                        unsigned row = 0;
+                        MASK fragA = 0;
+                        if (idx < end)
+                        {
+                            row = rowIds[idx];
+                            fragA = masks[idx];
+                        }
+                        
+                        if (laneID != 0 && laneID != 9 && laneID != 18 && laneID != 27)
+                        {
+                            fragB = 0;
+                        }
+
+                        unsigned fragC[2];
+                        fragC[0] = 0;
+
+                        m8n8k128(fragC, fragA, fragB);
+                        if (fragC[0])
+                        {
+                            unsigned word = row / MASK_BITS;
+                            unsigned bit = row % MASK_BITS;
+                            MASK temp = (static_cast<MASK>(1) << bit);
+                            MASK old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                if (old == 0)
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            grid.sync();
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+
+            if (cont)
+            {
+                // frontier swap
+                MASK* temp = frontier;
+                frontier = frontierNext;
+                frontierNext = temp;
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+                //
+            }
+            grid.sync();
+        }
+    }
+
     __global__ void BRSBFS8(    const unsigned* const __restrict__ noSliceSetsPtr,
                                 const unsigned* const __restrict__ sliceSetPtrs,
                                 const unsigned* const __restrict__ rowIds,
@@ -290,11 +532,11 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     void* kernelPtr = nullptr;
     if (sliceSize == 8)
     {
-        kernelPtr = (void*)BRSBFSKernels::BRSBFS8;
+        kernelPtr = (void*)BRSBFSKernels::BRSBFS8Enhanced;
     }
     else if (sliceSize == 32)
     {
-        kernelPtr = (void*)BRSBFSKernels::BRSBFS32;
+        kernelPtr = (void*)BRSBFSKernels::BRSBFS32Enhanced;
     }
     else
     {
@@ -374,7 +616,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     double end = omp_get_wtime();
 
     unsigned* visited = new unsigned[noWords];
-    gpuErrchk(cudaMemcpy(visited, d_Visited, sizeof(unsigned) * noWords, cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaMemcpy(visited, d_Visited, sizeof(MASK) * noWords, cudaMemcpyDeviceToHost))
     unsigned totalVisited = 0;
     for (unsigned i = 0; i < noWords; ++i)
     {

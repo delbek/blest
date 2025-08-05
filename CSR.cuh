@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <iostream>
 
 class CSR
 {
@@ -15,6 +16,10 @@ public:
     CSR& operator=(const CSR& other) = delete;
     CSR& operator=(CSR&& other) noexcept = delete;
     ~CSR();
+    
+    unsigned* reorderFromFile(std::string filename);
+    unsigned* degreeSort();
+    void applyPermutation(unsigned* inversePermutation);
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned* getRowPtrs() {return m_RowPtrs;}
@@ -98,6 +103,82 @@ CSR::CSR(std::string filename, bool undirected, bool binary)
     {
         m_RowPtrs[j + 1] += m_RowPtrs[j];
     }
+}
+
+unsigned* CSR::reorderFromFile(std::string filename)
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) 
+    {
+        std::cout << "Failed to open file from which to load reordering. Proceeding with natural ordering." << std::endl;
+        return nullptr;
+    }
+
+    unsigned* inversePermutation = new unsigned[m_N];
+    file.read(reinterpret_cast<char*>(inversePermutation), sizeof(unsigned) * m_N);
+    file.close();
+
+    applyPermutation(inversePermutation);
+
+    return inversePermutation;
+}
+
+unsigned* CSR::degreeSort()
+{
+    unsigned* inversePermutation = new unsigned[m_N];
+
+    std::vector<std::pair<unsigned, unsigned>> frequencies(m_N);
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        frequencies[i].first = i;
+        frequencies[i].second = m_RowPtrs[i + 1] - m_RowPtrs[i];
+    }
+    std::sort(frequencies.begin(), frequencies.end(), [](const auto& a, const auto& b) 
+    {
+        return a.second < b.second;
+    });
+
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        inversePermutation[frequencies[i].first] = i;
+    }
+
+    applyPermutation(inversePermutation);
+
+    return inversePermutation;
+}
+
+void CSR::applyPermutation(unsigned* inversePermutation)
+{
+    unsigned* newPtrs = new unsigned[m_N + 1];
+    std::fill(newPtrs, newPtrs + m_N + 1, 0);
+    unsigned* newCols = new unsigned[m_NNZ];
+
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        unsigned newRow = inversePermutation[i];
+        newPtrs[newRow + 1] = m_RowPtrs[i + 1] - m_RowPtrs[i];
+    }
+    
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        newPtrs[i + 1] += newPtrs[i];
+    }
+
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        unsigned newRow = inversePermutation[i];
+        for (unsigned idx = 0; idx < (m_RowPtrs[i + 1] - m_RowPtrs[i]); ++idx)
+        {
+            newCols[newPtrs[newRow] + idx] = inversePermutation[m_Cols[m_RowPtrs[i] + idx]];
+        }
+    }
+
+    delete[] m_RowPtrs;
+    delete[] m_Cols;
+
+    m_RowPtrs = newPtrs;
+    m_Cols = newCols;
 }
 
 CSR::~CSR()

@@ -5,12 +5,15 @@
 #include "omp.h"
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
+#include <limits>
 using namespace cooperative_groups;
 
+#define M 8
 #define K 128
 #define MASK unsigned // never change it
 constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 #define WARP_SIZE 32
+#define UNSIGNED_MAX std::numeric_limits<unsigned>::max()
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)

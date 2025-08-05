@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
 project(sutensor)
 
-# C++ standard
+# C++
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
-#set(CMAKE_BUILD_TYPE Debug)
 
 # OpenMP
 find_package(OpenMP REQUIRED)
@@ -14,12 +13,11 @@ if(OpenMP_FOUND)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
-# Cuda
+# CUDA
 find_package(CUDAToolkit REQUIRED)
 if(CUDAToolkit_FOUND)
     set(CMAKE_CUDA_ARCHITECTURES 90)
     enable_language(CUDA)
-    #set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -lineinfo")
     add_definitions(-DGPU_AVAILABLE)
 endif()
 
@@ -32,21 +30,10 @@ if(MPI_FOUND)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MPI_CXX_LINK_FLAGS}")
 endif()
 
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
-
-# Directories
 include_directories(.)
 
-# Create executable
 add_executable(sutensor
         main.cu
-        Common.cuh
-        CSC.cuh
-        CSC.cuh
-        BitMatrix.cuh
-        BRS.cuh
-        BFSKernel.cuh
-        BRSBFSKernel.cuh
 )
 
 target_compile_options(sutensor PRIVATE
@@ -54,7 +41,6 @@ target_compile_options(sutensor PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_90;-O3;--generate-line-info>
 )
 
-# Link shared libraries
 target_link_libraries(sutensor
         OpenMP::OpenMP_CXX
         cuda
@@ -63,7 +49,7 @@ target_link_libraries(sutensor
 )
 
 if(MPI_FOUND)
-    target_link_libraries(suOpt
+    target_link_libraries(sutensor
             MPI::MPI_CXX
     )
 endif()
