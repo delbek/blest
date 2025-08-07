@@ -10,7 +10,6 @@
 class BCS: public BitMatrix
 {
 public:
-    BCS(std::string filename);
     BCS(unsigned sliceSize = 32);
     BCS(const BCS& other) = delete;
     BCS(BCS&& other) noexcept = delete;
@@ -18,7 +17,6 @@ public:
     BCS& operator=(BCS&& other) noexcept = delete;
     virtual ~BCS();
 
-    virtual void save(std::string filename) final;
     void constructFromCSRMatrix(CSR* csr);
     void printBCSData();
 
@@ -39,32 +37,6 @@ private:
     MASK* m_Masks;
 };
 
-BCS::BCS(std::string filename)
-: BitMatrix()
-{
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) 
-    {
-        throw std::runtime_error("Failed to open file from which to load BCS.");
-    }
-
-    // metadata
-    file.read(reinterpret_cast<char*>(&m_N), sizeof(unsigned));
-    file.read(reinterpret_cast<char*>(&m_SliceSize), sizeof(unsigned));
-    file.read(reinterpret_cast<char*>(&m_NoSliceSets), sizeof(unsigned));
-
-    // arrays
-    m_SliceSetPtrs = new unsigned[m_NoSliceSets + 1];
-    file.read(reinterpret_cast<char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
-    m_ColIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
-    file.read(reinterpret_cast<char*>(m_ColIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-    m_Masks = new MASK[(m_SliceSetPtrs[m_NoSliceSets] / noMasks)];
-    file.read(reinterpret_cast<char*>(m_Masks), sizeof(MASK) * (m_SliceSetPtrs[m_NoSliceSets] / noMasks));
-
-    file.close();
-}
-
 BCS::BCS(unsigned sliceSize)
 : BitMatrix(),
   m_SliceSize(sliceSize)
@@ -77,28 +49,6 @@ BCS::~BCS()
     delete[] m_SliceSetPtrs;
     delete[] m_ColIds;
     delete[] m_Masks;
-}
-
-void BCS::save(std::string filename)
-{
-    std::ofstream file(filename, std::ios::binary);
-    if (!file.is_open()) 
-    {
-        throw std::runtime_error("Failed to open file in which to save BCS.");
-    }
-    
-    // metadata
-    file.write(reinterpret_cast<const char*>(&m_N), sizeof(unsigned));
-    file.write(reinterpret_cast<const char*>(&m_SliceSize), sizeof(unsigned));
-    file.write(reinterpret_cast<const char*>(&m_NoSliceSets), sizeof(unsigned));
-
-    // arrays
-    file.write(reinterpret_cast<const char*>(m_SliceSetPtrs), sizeof(unsigned) * (m_NoSliceSets + 1));
-    file.write(reinterpret_cast<const char*>(m_ColIds), sizeof(unsigned) * m_SliceSetPtrs[m_NoSliceSets]);
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-    file.write(reinterpret_cast<const char*>(m_Masks), sizeof(MASK) * (m_SliceSetPtrs[m_NoSliceSets] / noMasks));
-
-    file.close();
 }
 
 void BCS::constructFromCSRMatrix(CSR* csr)

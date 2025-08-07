@@ -41,16 +41,16 @@ namespace BRSBFSKernels
                     unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
                     for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
                     {
-                        unsigned idx = tilePtr + laneID;
+                        unsigned tile = tilePtr + laneID;
                         uint4 rows = {0, 0, 0, 0};
                         MASK mask = 0;
-                        if (idx < tileEnd)
+                        if (tile < tileEnd)
                         {
-                            rows = reinterpret_cast<const uint4*>(rowIds)[idx];
-                            mask = masks[idx];
+                            rows = reinterpret_cast<const uint4*>(rowIds)[tile];
+                            mask = masks[tile];
                         }
 
-                        if (laneID != 0 && laneID != 9 && laneID != 18 && laneID != 27)
+                        if (laneID % 9 != 0)
                         {
                             fragB = 0;
                         }
@@ -187,16 +187,16 @@ namespace BRSBFSKernels
                     unsigned end = sliceSetPtrs[sliceSet + 1];
                     for (unsigned slicePtr = start; slicePtr < end; slicePtr += WARP_SIZE)
                     {
-                        unsigned idx = slicePtr + laneID;
+                        unsigned slice = slicePtr + laneID;
                         unsigned row = 0;
                         MASK fragA = 0;
-                        if (idx < end)
+                        if (slice < end)
                         {
-                            row = rowIds[idx];
-                            fragA = masks[idx];
+                            row = rowIds[slice];
+                            fragA = masks[slice];
                         }
                         
-                        if (laneID != 0 && laneID != 9 && laneID != 18 && laneID != 27)
+                        if (laneID % 9 != 0)
                         {
                             fragB = 0;
                         }
@@ -285,13 +285,13 @@ namespace BRSBFSKernels
                     unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
                     for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
                     {
-                        unsigned idx = tilePtr + laneID;
+                        unsigned tile = tilePtr + laneID;
                         uint4 rows = {0, 0, 0, 0};
                         MASK mask = 0;
-                        if (idx < tileEnd)
+                        if (tile < tileEnd)
                         {
-                            rows = reinterpret_cast<const uint4*>(rowIds)[idx];
-                            mask = masks[idx];
+                            rows = reinterpret_cast<const uint4*>(rowIds)[tile];
+                            mask = masks[tile];
                         }
                         unsigned fragC[2];
                         for (unsigned round = 0; round < 4; ++round)
@@ -441,13 +441,13 @@ namespace BRSBFSKernels
                     unsigned end = sliceSetPtrs[sliceSet + 1];
                     for (unsigned slicePtr = start; slicePtr < end; slicePtr += WARP_SIZE)
                     {
-                        unsigned idx = slicePtr + laneID;
+                        unsigned slice = slicePtr + laneID;
                         unsigned row = 0;
                         MASK mask = 0;
-                        if (idx < end)
+                        if (slice < end)
                         {
-                            row = rowIds[idx];
-                            mask = masks[idx];
+                            row = rowIds[slice];
+                            mask = masks[slice];
                         }
                         unsigned fragC[2];
                         for (unsigned round = 0; round < 4; ++round)
