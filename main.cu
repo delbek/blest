@@ -12,8 +12,8 @@ int main()
     BRS* brs = new BRS(8);
     brs->constructFromCSCMatrix(csc);
     brs->printBRSData();
-    brs->coalescingTest();
-    brs->pattern8Test();
+    //brs->coalescingTest();
+    //brs->pattern8Test();
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
     kernel.runBFS("/arf/home/delbek/sutensor/com-LiveJournal.txt", 10, 5, inversePermutation);

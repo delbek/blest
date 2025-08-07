@@ -33,10 +33,9 @@ namespace BRSBFSKernels
             for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
             {
                 unsigned shift = (sliceSet % 4) * 8;
-                MASK fragB = ((frontier[sliceSet / 4] >> shift) & 0x000000FF);
-                if (fragB)
+                MASK origFragB = ((frontier[sliceSet / 4] >> shift) & 0x000000FF);
+                if (origFragB)
                 {
-                    fragB *= 0x01010101;
                     unsigned tileStart = sliceSetPtrs[sliceSet] / 4;
                     unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
                     for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
@@ -50,16 +49,20 @@ namespace BRSBFSKernels
                             mask = masks[tile];
                         }
 
-                        if (laneID % 9 != 0)
+                        MASK fragA = (mask & 0x0000FFFF);
+                        MASK fragB = 0;
+                        if (laneID % 9 == 4)
                         {
-                            fragB = 0;
+                            fragB = origFragB << 8;
                         }
-
+                        else if (laneID % 9 == 0)
+                        {
+                            fragB = origFragB;
+                        }
                         unsigned fragC[2];
-                        fragC[0] = 0;
-
-                        MASK fragA = (mask & 0x000000FF);
+                        fragC[0] = fragC[1] = 0;
                         m8n8k128(fragC, fragA, fragB);
+                        
                         if (fragC[0])
                         {
                             unsigned word = rows.x / MASK_BITS;
@@ -75,9 +78,7 @@ namespace BRSBFSKernels
                                 }
                             }
                         }
-                        fragA = (mask & 0x0000FF00);
-                        m8n8k128(fragC, fragA, fragB);
-                        if (fragC[0])
+                        if (fragC[1])
                         {
                             unsigned word = rows.y / MASK_BITS;
                             unsigned bit = rows.y % MASK_BITS;
@@ -92,8 +93,20 @@ namespace BRSBFSKernels
                                 }
                             }
                         }
-                        fragA = (mask & 0x00FF0000);
+
+                        fragA = (mask & 0xFFFF0000);
+                        fragB = 0;
+                        if (laneID % 9 == 4)
+                        {
+                            fragB = origFragB << 24;
+                        }
+                        else if (laneID % 9 == 0)
+                        {
+                            fragB = origFragB << 16;
+                        }
+                        fragC[0] = fragC[1] = 0;
                         m8n8k128(fragC, fragA, fragB);
+
                         if (fragC[0])
                         {
                             unsigned word = rows.z / MASK_BITS;
@@ -109,9 +122,7 @@ namespace BRSBFSKernels
                                 }
                             }
                         }
-                        fragA = (mask & 0xFF000000);
-                        m8n8k128(fragC, fragA, fragB);
-                        if (fragC[0])
+                        if (fragC[1])
                         {
                             unsigned word = rows.w / MASK_BITS;
                             unsigned bit = rows.w % MASK_BITS;
