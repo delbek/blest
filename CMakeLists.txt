@@ -16,40 +16,32 @@ endif()
 # CUDA
 find_package(CUDAToolkit REQUIRED)
 if(CUDAToolkit_FOUND)
-    set(CMAKE_CUDA_ARCHITECTURES 90)
+		set(CMAKE_CUDA_ARCHITECTURES 90)
     enable_language(CUDA)
-    add_definitions(-DGPU_AVAILABLE)
-endif()
-
-# MPI
-find_package(MPI QUIET)
-if(MPI_FOUND)
-    add_definitions(-DMPI_AVAILABLE)
-    include_directories(${MPI_INCLUDE_PATH})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MPI_CXX_COMPILE_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MPI_CXX_LINK_FLAGS}")
 endif()
 
 include_directories(.)
 
 add_executable(sutensor
-        main.cu
-)
-
-target_compile_options(sutensor PRIVATE
-    -O3
-    $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_90;-O3;--generate-line-info>
+    main.cu
 )
 
 target_link_libraries(sutensor
-        OpenMP::OpenMP_CXX
-        cuda
-        CUDA::cudart
-        ${CUDA_LIBRARIES}
+		OpenMP::OpenMP_CXX
+    cuda
+    CUDA::cudart
+    ${CUDA_LIBRARIES}
 )
 
-if(MPI_FOUND)
-    target_link_libraries(sutensor
-            MPI::MPI_CXX
-    )
-endif()
+target_compile_options(sutensor PRIVATE
+  -O3 -funroll-loops -finline-functions -march=native -ffast-math
+  $<$<COMPILE_LANGUAGE:CUDA>:
+		-O3
+    --generate-line-info
+    --expt-relaxed-constexpr
+    --expt-extended-lambda
+    --fmad=true
+    -Xptxas=-v
+    --use_fast_math
+  >
+)

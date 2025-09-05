@@ -69,8 +69,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         throw std::runtime_error("Invalid slice size provided.");
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned noSlices = K / m_SliceSize;
-    unsigned noWarpSlice = noSlices * 8;
+    unsigned noWarpSlice = (K / m_SliceSize) * 8;
 
     std::vector<std::vector<unsigned>> rowIds(m_NoSliceSets);
     std::vector<std::vector<MASK>> masks(m_NoSliceSets);
@@ -149,7 +148,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             i = nextRow;
         }
 
-        if (tempRowIds.size() != 0)
+        if (tempRowIds.size() != 0) // perhaps this could be written in a way first n with 4 * n <= tempRowIds.size() is found and then n thread distribution can be made before leftovers are distributed to (32 - n) threads in a non-coalesced manner
         {
             MASK cumulative = 0;
             unsigned cumulativeCounter = 0;
@@ -326,13 +325,12 @@ void BRS::pattern8Test()
 void BRS::printBRSData()
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned noSlices = K / m_SliceSize;
 
     std::cout << "MASK size: " << MASK_BITS << std::endl;
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices: " << m_SliceSetPtrs[m_NoSliceSets] << std::endl;
-    std::cout << "Number of slices in each set row: " << noSlices << std::endl;
+    std::cout << "Number of slices in each set row: " << K / m_SliceSize << std::endl;
     std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 
     double average = 0;

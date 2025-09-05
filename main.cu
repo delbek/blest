@@ -1,25 +1,23 @@
 #include "CSC.cuh"
-#include "BRS.cuh"
-#include "BRSBFSKernel.cuh"
+#include "HBRS.cuh"
+#include "HBRSBFSKernel.cuh"
 
 int main()
 {
-    bool undirected = true;
+    bool undirected = false;
     bool binary = true;
-    CSC* csc = new CSC("/arf/home/delbek/sutensor/com-LiveJournal.mtx", undirected, binary);
-    unsigned* inversePermutation = nullptr; //csc->reorderFromFile("ordering_gorder8_com-LiveJournal.bin");
+    CSC* csc = new CSC("/arf/home/delbek/sutensor/wb-edu.mtx", undirected, binary);
+    unsigned k;
+    unsigned* inversePermutation = csc->hubPartition(k);
 
-    BRS* brs = new BRS(8);
-    brs->constructFromCSCMatrix(csc);
-    brs->printBRSData();
-    //brs->coalescingTest();
-    //brs->pattern8Test();
+    HBRS* hbrs = new HBRS(8, 8);
+    hbrs->constructFromCSCMatrix(csc, k);
 
-    BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    kernel.runBFS("/arf/home/delbek/sutensor/com-LiveJournal.txt", 10, 5, inversePermutation);
+    HBRSBFSKernel kernel(dynamic_cast<BitMatrix*>(hbrs));
+    kernel.runBFS("/arf/home/delbek/sutensor/wb-edu.txt", 10, 5, inversePermutation);
 
     delete csc;
-    delete brs;
+    delete hbrs;
     if (inversePermutation != nullptr)
     {
         delete[] inversePermutation;

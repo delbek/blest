@@ -18,6 +18,9 @@ public:
     ~CSC();
 
     unsigned* reorderFromFile(std::string filename);
+    double avgDegree();
+    unsigned* hubPartition(unsigned& k);
+    void applyPermutation(unsigned* inversePermutation);
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned* getColPtrs() {return m_ColPtrs;}
@@ -168,6 +171,71 @@ unsigned* CSC::reorderFromFile(std::string filename)
     m_Rows = newRows;
 
     return inversePermutation;
+}
+
+double CSC::avgDegree()
+{
+    double avg = 0;
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        avg += (m_ColPtrs[j + 1] - m_ColPtrs[j]);
+    }
+    return (avg / m_N);
+}
+
+unsigned* CSC::hubPartition(unsigned& k)
+{
+    unsigned* inversePermutation = new unsigned[m_N];
+
+    unsigned located = 0;
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        if ((m_ColPtrs[j + 1] - m_ColPtrs[j]) < 50)
+        {
+            inversePermutation[j] = (m_N - (++located));
+        }
+    }
+
+    k = (m_N - located);
+    return inversePermutation;
+}
+
+void CSC::applyPermutation(unsigned* inversePermutation)
+{
+    unsigned* newColPtrs = new unsigned[m_N + 1];
+    std::fill(newColPtrs, newColPtrs + m_N + 1, 0);
+    unsigned* newRows = new unsigned[m_NNZ];
+
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        unsigned newCol = inversePermutation[j];
+        newColPtrs[newCol + 1] = m_ColPtrs[j + 1] - m_ColPtrs[j];
+    }
+    
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        newColPtrs[j + 1] += newColPtrs[j];
+    }
+
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        unsigned newCol = inversePermutation[j];
+        for (unsigned idx = 0; idx < (m_ColPtrs[j + 1] - m_ColPtrs[j]); ++idx)
+        {
+            newRows[newColPtrs[newCol] + idx] = inversePermutation[m_Rows[m_ColPtrs[j] + idx]];
+        }
+    }
+
+    for (unsigned col = 0; col < m_N; ++col)
+    {
+        std::sort(newRows + newColPtrs[col], newRows + newColPtrs[col + 1]);
+    }
+
+    delete[] m_ColPtrs;
+    delete[] m_Rows;
+
+    m_ColPtrs = newColPtrs;
+    m_Rows = newRows;
 }
 
 #endif

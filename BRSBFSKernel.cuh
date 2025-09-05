@@ -38,9 +38,9 @@ namespace BRSBFSKernels
                 {
                     unsigned tileStart = sliceSetPtrs[sliceSet] / 4;
                     unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
-                    for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
+                    for (unsigned t = tileStart; t < tileEnd; t += WARP_SIZE)
                     {
-                        unsigned tile = tilePtr + laneID;
+                        unsigned tile = t + laneID;
                         uint4 rows = {0, 0, 0, 0};
                         MASK mask = 0;
                         if (tile < tileEnd)
@@ -196,9 +196,9 @@ namespace BRSBFSKernels
                 {
                     unsigned start = sliceSetPtrs[sliceSet];
                     unsigned end = sliceSetPtrs[sliceSet + 1];
-                    for (unsigned slicePtr = start; slicePtr < end; slicePtr += WARP_SIZE)
+                    for (unsigned s = start; s < end; s += WARP_SIZE)
                     {
-                        unsigned slice = slicePtr + laneID;
+                        unsigned slice = s + laneID;
                         unsigned row = 0;
                         MASK fragA = 0;
                         if (slice < end)
@@ -294,9 +294,9 @@ namespace BRSBFSKernels
                     fragB *= 0x01010101;
                     unsigned tileStart = sliceSetPtrs[sliceSet] / 4;
                     unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 4;
-                    for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
+                    for (unsigned t = tileStart; t < tileEnd; t += WARP_SIZE)
                     {
-                        unsigned tile = tilePtr + laneID;
+                        unsigned tile = t + laneID;
                         uint4 rows = {0, 0, 0, 0};
                         MASK mask = 0;
                         if (tile < tileEnd)
@@ -450,9 +450,9 @@ namespace BRSBFSKernels
                 {
                     unsigned start = sliceSetPtrs[sliceSet];
                     unsigned end = sliceSetPtrs[sliceSet + 1];
-                    for (unsigned slicePtr = start; slicePtr < end; slicePtr += WARP_SIZE)
+                    for (unsigned s = start; s < end; s += WARP_SIZE)
                     {
-                        unsigned slice = slicePtr + laneID;
+                        unsigned slice = s + laneID;
                         unsigned row = 0;
                         MASK mask = 0;
                         if (slice < end)

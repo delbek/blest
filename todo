@@ -1,0 +1,8 @@
+- current approach of partitioning normal from hub is not that bad in CSC.cuh but degree sort is more appropriate as we slide k at the beginning of the construction of HBRS to make k a multiple of m_SliceSize_Hub, in which case we include columns that are not hub into the hub partition.
+- encoding alignment ordering
+- complete/incomplete warp separation -> complete warps are given to tensor cores, invalid ones are to cuda cores
+- cache row ids on-chip
+- row id compression
+- sparse encoding and sparse mma
+- load balance arrays
+- pipelining
