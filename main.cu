@@ -6,7 +6,7 @@ int main()
 {
     bool undirected = false;
     bool binary = true;
-    CSC* csc = new CSC("/arf/home/delbek/sutensor/wb-edu.mtx", undirected, binary);
+    CSC* csc = new CSC("/arf/home/delbek/sutensor/wikipedia-20070206.mtx", undirected, binary);
     unsigned k;
     unsigned* inversePermutation = csc->hubPartition(k);
 
@@ -14,7 +14,7 @@ int main()
     hbrs->constructFromCSCMatrix(csc, k);
 
     HBRSBFSKernel kernel(dynamic_cast<BitMatrix*>(hbrs));
-    kernel.runBFS("/arf/home/delbek/sutensor/wb-edu.txt", 10, 5, inversePermutation);
+    kernel.runBFS("/arf/home/delbek/sutensor/wikipedia-20070206.txt", 10, 5, inversePermutation);
 
     delete csc;
     delete hbrs;

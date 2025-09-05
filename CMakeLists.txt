@@ -34,14 +34,9 @@ target_link_libraries(sutensor
 )
 
 target_compile_options(sutensor PRIVATE
-  -O3 -funroll-loops -finline-functions -march=native -ffast-math
+  -O3 -g
   $<$<COMPILE_LANGUAGE:CUDA>:
 		-O3
     --generate-line-info
-    --expt-relaxed-constexpr
-    --expt-extended-lambda
-    --fmad=true
-    -Xptxas=-v
-    --use_fast_math
   >
 )

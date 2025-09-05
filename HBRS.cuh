@@ -13,12 +13,15 @@
 #include <stdexcept>
 #include <vector>
 #include <unordered_map>
-#include <tuple>
 
 class HBRS: public BitMatrix
 {
 private:
-    typedef std::tuple<MASK, unsigned, std::vector<unsigned>, std::unordered_map<unsigned, unsigned>> Encoding;
+    struct Encoding
+    {
+        MASK mask;
+        std::vector<unsigned> rowIds;
+    };
 
 public:
     HBRS(unsigned sliceSize = 32, unsigned sliceSizeHub = 32);
@@ -56,10 +59,7 @@ private:
     void constructHubFromCSCMatrix(CSC* csc);
     void printHBRSHubData();
     
-    void warpAlign(std::vector<Encoding>& warp, unsigned noMasks);
-    void distributeEncodingsToWarp(std::vector<Encoding>& encodings, unsigned noMasks);
-    double euclideanDistance(std::unordered_map<unsigned, unsigned>& hash1, std::unordered_map<unsigned, unsigned>& hash2);
-    void hubEncodingOrderedDistribution(std::vector<MASK>& tempMasks, std::vector<unsigned>& tempEncodingSizes, std::vector<unsigned>& tempRowIds, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned& total);
+    void distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize);
 
 private:
     // Normal
@@ -129,7 +129,6 @@ void HBRS::constructNormalFromCSCMatrix(CSC* csc)
         throw std::runtime_error("Invalid slice size provided for normal slice sets.");
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned noWarpSlice = (K / m_SliceSize) * 8;
 
     std::vector<std::vector<unsigned>> rowIds(m_NoSliceSets);
     std::vector<std::vector<MASK>> masks(m_NoSliceSets);
@@ -146,8 +145,7 @@ void HBRS::constructNormalFromCSCMatrix(CSC* csc)
             ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
         }
 
-        std::vector<unsigned> tempRowIds;
-        std::vector<MASK> tempMasks;
+        std::vector<Encoding> encodings;
 
         unsigned i = 0;
         while (i < csc->getN()) 
@@ -183,62 +181,25 @@ void HBRS::constructNormalFromCSCMatrix(CSC* csc)
 
             if (individual != 0)
             {
-                tempRowIds.emplace_back(i);
-                tempMasks.emplace_back(individual);
-            }
-
-            if (tempRowIds.size() == noWarpSlice)
-            {
-                for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
-                {
-                    MASK cumulative = 0;
-                    unsigned cumulativeCounter = 0;
-                    for (unsigned k = thread; k < noWarpSlice; k += WARP_SIZE)
-                    {
-                        rowIds[sliceSet].emplace_back(tempRowIds[k]);
-                        cumulative |= (static_cast<MASK>(tempMasks[k] << (m_SliceSize * cumulativeCounter++)));
-                    }
-                    masks[sliceSet].emplace_back(cumulative);
-                }
-                tempRowIds.clear();
-                tempMasks.clear();
+                Encoding encoding;
+                encoding.mask = individual;
+                encoding.rowIds.emplace_back(i);
+                encodings.emplace_back(encoding);
             }
 
             i = nextRow;
         }
 
-        if (tempRowIds.size() != 0) // perhaps this could be written in a way first n with 4 * n <= tempRowIds.size() is found and then n thread distribution can be made before leftovers are distributed to (32 - n) threads in a non-coalesced manner
-        {
-            MASK cumulative = 0;
-            unsigned cumulativeCounter = 0;
-            for (unsigned k = 0; k < tempRowIds.size(); ++k)
-            {
-                rowIds[sliceSet].emplace_back(tempRowIds[k]);
-                cumulative |= (static_cast<MASK>(tempMasks[k] << (m_SliceSize * cumulativeCounter++)));
-                if (cumulativeCounter == noMasks)
-                {
-                    masks[sliceSet].emplace_back(cumulative);
-                    cumulativeCounter = 0;
-                    cumulative = 0;
-                }
-            }
-
-            if (cumulativeCounter != 0)
-            {
-                for (unsigned k = cumulativeCounter; k < noMasks; ++k)
-                {
-                    rowIds[sliceSet].emplace_back(0);
-                }
-                masks[sliceSet].emplace_back(cumulative);
-            }
-        }
+        std::vector<unsigned> encodingSizes;
+        this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes, rowIds[sliceSet], noMasks, m_SliceSize);
+        m_SliceSetPtrs[sliceSet + 1] = rowIds[sliceSet].size();
 
         assert(rowIds[sliceSet].size() == masks[sliceSet].size() * noMasks);
     }
 
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet) 
     {
-        m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + rowIds[sliceSet].size();
+        m_SliceSetPtrs[sliceSet + 1] += m_SliceSetPtrs[sliceSet];
     }
 
     m_RowIds = new unsigned[m_SliceSetPtrs[m_NoSliceSets]];
@@ -295,7 +256,7 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
             ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
         }
 
-        std::vector<std::vector<unsigned>> encodings(1 << m_SliceSize_Hub);
+        std::vector<std::vector<unsigned>> patterns(1 << m_SliceSize_Hub);
 
         unsigned i = 0;
         while (i < csc->getN()) 
@@ -331,24 +292,22 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
 
             if (individual != 0)
             {
-                encodings[individual].emplace_back(i);
+                patterns[individual].emplace_back(i);
             }
 
             i = nextRow;
         }
 
-        unsigned total = 0;
-        std::vector<unsigned> tempRowIds;
-        std::vector<unsigned> tempEncodingSizes;
-        std::vector<MASK> tempMasks;
-        for (unsigned encoding = 1; encoding < encodings.size(); ++encoding)
+        std::vector<Encoding> encodings;
+
+        for (unsigned pattern = 1; pattern < patterns.size(); ++pattern)
         {
-            if (encodings[encoding].empty()) continue;
+            if (patterns[pattern].empty()) continue;
 
             unsigned chunkSizeDefault = 32;
-            unsigned chunkSizeReverse = (encodings[encoding].size() + WARP_SIZE - 1) / WARP_SIZE;
+            unsigned chunkSizeReverse = (patterns[pattern].size() + WARP_SIZE - 1) / WARP_SIZE;
             unsigned chunkSize = std::max(chunkSizeDefault, chunkSizeReverse);
-            unsigned noPartition = (encodings[encoding].size() + chunkSize - 1) / chunkSize;
+            unsigned noPartition = (patterns[pattern].size() + chunkSize - 1) / chunkSize;
 
             std::vector<std::vector<unsigned>> outerRowIds(noPartition);
             std::vector<bool> first(noPartition, false);
@@ -361,25 +320,28 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
                     {
                         first[part] = true;
                     }
-                    if (added < encodings[encoding].size())
+                    if (added < patterns[pattern].size())
                     {
-                        outerRowIds[part].emplace_back(encodings[encoding][added++]);
+                        outerRowIds[part].emplace_back(patterns[pattern][added++]);
                     }
                 }
             }
             for (unsigned part = 0; part < noPartition; ++part)
             {
-                MASK individual = static_cast<MASK>(encoding);
-                tempMasks.emplace_back(individual);
+                Encoding encoding;
+                encoding.mask = static_cast<MASK>(pattern);
                 for (unsigned i = 0; i < outerRowIds[part].size(); ++i)
                 {
-                    tempRowIds.emplace_back(outerRowIds[part][i]);
+                    encoding.rowIds.emplace_back(outerRowIds[part][i]);
                 }
-                tempEncodingSizes.emplace_back(outerRowIds[part].size());
+                encodings.emplace_back(encoding);
             }
         }
-        this->hubEncodingOrderedDistribution(tempMasks, tempEncodingSizes, tempRowIds, masks[sliceSet], encodingSizes[sliceSet], rowIds[sliceSet], noMasks, total);
-        m_SliceSetPtrs_Hub[sliceSet + 1] = total;
+        
+        this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes[sliceSet], rowIds[sliceSet], noMasks, m_SliceSize_Hub);
+        m_SliceSetPtrs_Hub[sliceSet + 1] = encodingSizes[sliceSet].size();
+
+        assert(encodingSizes[sliceSet].size() == masks[sliceSet].size() * noMasks);
     }
 
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets_Hub; ++sliceSet) 
@@ -426,12 +388,7 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
     this->printHBRSHubData();
 }
 
-void HBRS::warpAlign(std::vector<Encoding>& warp, unsigned noMasks)
-{
-    
-}
-
-void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, unsigned noMasks)
+void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize)
 {
     std::vector<Encoding> distributed;
 
@@ -444,7 +401,6 @@ void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, unsigned 
         ++current;
         if (current == gridSize)
         {
-            this->warpAlign(warp, noMasks);
             current = 0;
             for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
             {
@@ -458,22 +414,6 @@ void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, unsigned 
     }
     if (!warp.empty())
     {
-        /*
-        current = 0;
-        for (unsigned i = 0; i < warp.size(); ++i)
-        {
-            distributed.emplace_back(warp[i]);
-            ++current;
-        }
-        while (current % noMasks != 0)
-        {
-            Encoding emptyEncoding;
-            std::get<0>(emptyEncoding) = static_cast<MASK>(0);
-            std::get<1>(emptyEncoding) = static_cast<MASK>(0);
-            distributed.emplace_back(emptyEncoding);
-            ++current;
-        }
-        */
         for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
         {
             if (thread >= warp.size())
@@ -490,110 +430,21 @@ void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, unsigned 
                 else
                 {
                     Encoding emptyEncoding;
-                    std::get<0>(emptyEncoding) = static_cast<MASK>(0);
-                    std::get<1>(emptyEncoding) = static_cast<MASK>(0);
+                    emptyEncoding.mask = static_cast<MASK>(0);
+                    emptyEncoding.rowIds.emplace_back(0);
                     distributed.emplace_back(emptyEncoding);
                 }
             }
         }
     }
 
-    encodings = std::move(distributed);
-}
-
-double HBRS::euclideanDistance(std::unordered_map<unsigned, unsigned>& hash1, std::unordered_map<unsigned, unsigned>& hash2)
-{
-    double distance = 0;
-    for (const auto& iter: hash1)
-    {
-        unsigned word1 = iter.first;
-        unsigned frequency1 = iter.second;
-        unsigned frequency2 = 0;
-        if (hash2.contains(word1))
-        {
-            frequency2 = hash2[word1];
-        }
-        double temp = frequency1 - frequency2;
-        distance += std::sqrt(temp * temp);
-    }
-    for (const auto& iter: hash2)
-    {
-        unsigned word2 = iter.first;
-        unsigned frequency2 = iter.second;
-        if (!hash1.contains(word2))
-        {
-            distance += std::sqrt(frequency2 * frequency2);
-        }
-    }
-    return distance;
-}
-
-void HBRS::hubEncodingOrderedDistribution(std::vector<MASK>& tempMasks, std::vector<unsigned>& tempEncodingSizes, std::vector<unsigned>& tempRowIds, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned& total)
-{
-    std::vector<Encoding> encodings;
-    unsigned acc = 0;
-    for (unsigned k = 0; k < tempMasks.size(); ++k)
-    {
-        Encoding encoding;
-        std::get<0>(encoding) = tempMasks[k];
-        std::get<1>(encoding) = tempEncodingSizes[k];
-        std::vector<unsigned>& rows = std::get<2>(encoding);
-        std::unordered_map<unsigned, unsigned>& hash = std::get<3>(encoding);
-        for (unsigned i = 0; i < tempEncodingSizes[k]; ++i)
-        {
-            unsigned row = tempRowIds[acc++];
-            unsigned word = row / MASK_BITS;
-            if (hash.contains(word))
-            {
-                ++hash[word];
-            }
-            else
-            {
-                hash[word] = 1;
-            }
-            rows.emplace_back(row);
-        }
-        encodings.emplace_back(encoding);
-    }
-
-    std::vector<Encoding> ordered;
-    if (!encodings.empty())
-    {
-        std::vector<bool> used(encodings.size(), false);
-        ordered.emplace_back(encodings[0]);
-        used[0] = true;
-        for (unsigned i = 1; i < encodings.size(); ++i)
-        {
-            double minDist = std::numeric_limits<double>::max();
-            unsigned minIdx = 0;
-            for (unsigned j = 0; j < encodings.size(); ++j)
-            {
-                if (used[j])
-                {
-                    continue;
-                }
-                double dist = this->euclideanDistance(std::get<3>(ordered.back()), std::get<3>(encodings[j]));
-                if (dist < minDist)
-                {
-                    minDist = dist;
-                    minIdx = j;
-                }
-            }
-            ordered.emplace_back(encodings[minIdx]);
-            used[minIdx] = true;
-        }
-    }
-    encodings.clear();
-    this->distributeEncodingsToWarp(ordered, noMasks);
-    encodings = std::move(ordered);
-
     MASK cumulative = 0;
     unsigned cumulativeCounter = 0;
-    for (unsigned encoding = 0; encoding < encodings.size(); ++encoding)
+    for (unsigned encoding = 0; encoding < distributed.size(); ++encoding)
     {
-        cumulative |= (static_cast<MASK>(std::get<0>(encodings[encoding]) << (m_SliceSize_Hub * cumulativeCounter++)));
-        encodingSizes.emplace_back(std::get<1>(encodings[encoding]));
-        const std::vector<unsigned>& rows = std::get<2>(encodings[encoding]);
+        cumulative |= (static_cast<MASK>(distributed[encoding].mask << (sliceSize * cumulativeCounter++)));
+        encodingSizes.emplace_back(distributed[encoding].rowIds.size());
+        const std::vector<unsigned>& rows = distributed[encoding].rowIds;
         for (unsigned i = 0; i < encodingSizes.back(); ++i)
         {
             rowIds.emplace_back(rows[i]);
@@ -604,8 +455,9 @@ void HBRS::hubEncodingOrderedDistribution(std::vector<MASK>& tempMasks, std::vec
             cumulative = 0;
             cumulativeCounter = 0;
         }
-        ++total;
     }
+
+    assert(cumulativeCounter == 0);
 }
 
 void HBRS::printHBRSData()
