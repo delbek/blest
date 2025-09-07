@@ -185,8 +185,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
     }
 
-    std::cout << "Number of empty slice sets: " << noEmptySliceSets << std::endl;
-
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet) 
     {
         m_SliceSetPtrs[sliceSet + 1] = m_SliceSetPtrs[sliceSet] + rowIds[sliceSet].size();

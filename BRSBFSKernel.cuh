@@ -634,7 +634,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
         totalVisited += __builtin_popcount(visited[i]);
     }
     delete[] visited;
-    std::cout << "Total traversed number of nodes: " << totalVisited << std::endl;
+    //std::cout << "Total traversed number of nodes: " << totalVisited << std::endl;
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))

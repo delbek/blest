@@ -23,6 +23,15 @@ private:
         std::vector<unsigned> rowIds;
     };
 
+    struct LocalityStatistics
+    {
+        double wordPerMemory_avg = 0;
+        double encodingSize_avg = 0;
+        double encodingSize_dev = 0;
+        unsigned complete = 0;
+        unsigned incomplete = 0;
+    };
+
 public:
     HBRS(unsigned sliceSize = 32, unsigned sliceSizeHub = 32);
     HBRS(const HBRS& other) = delete;
@@ -59,7 +68,9 @@ private:
     void constructHubFromCSCMatrix(CSC* csc);
     void printHBRSHubData();
     
-    void distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize);
+    void bucketDistribution(std::vector<Encoding>& encodings, unsigned max, unsigned sliceSet);
+    LocalityStatistics distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize, unsigned sliceSet);
+    LocalityStatistics computeWarpLocalityStatistics(std::vector<Encoding>& warp, unsigned noMasks);
 
 private:
     // Normal
@@ -103,10 +114,10 @@ HBRS::~HBRS()
 
 void HBRS::constructFromCSCMatrix(CSC* csc, unsigned k)
 {
-    for (; k % m_SliceSize_Hub != 0; ++k);
-
-    m_N = (csc->getN() - k);
-    m_N_Hub = k;
+    unsigned kAligned = k + ((m_SliceSize_Hub - (k % m_SliceSize_Hub)) % m_SliceSize_Hub);
+    kAligned = std::min(kAligned, csc->getN());
+    m_N_Hub = kAligned;
+    m_N = csc->getN() - kAligned;
 
     std::cout << "Hub range: 0 - " << m_N_Hub << std::endl;
     std::cout << "Normal range: " << m_N_Hub << " - " << csc->getN() << std::endl;
@@ -191,7 +202,7 @@ void HBRS::constructNormalFromCSCMatrix(CSC* csc)
         }
 
         std::vector<unsigned> encodingSizes;
-        this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes, rowIds[sliceSet], noMasks, m_SliceSize);
+        LocalityStatistics stats = this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes, rowIds[sliceSet], noMasks, m_SliceSize, sliceSet);
         m_SliceSetPtrs[sliceSet + 1] = rowIds[sliceSet].size();
 
         assert(rowIds[sliceSet].size() == masks[sliceSet].size() * noMasks);
@@ -299,46 +310,28 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
         }
 
         std::vector<Encoding> encodings;
+        unsigned max = 0;
 
         for (unsigned pattern = 1; pattern < patterns.size(); ++pattern)
         {
             if (patterns[pattern].empty()) continue;
 
-            unsigned chunkSizeDefault = 32;
-            unsigned chunkSizeReverse = (patterns[pattern].size() + WARP_SIZE - 1) / WARP_SIZE;
-            unsigned chunkSize = std::max(chunkSizeDefault, chunkSizeReverse);
-            unsigned noPartition = (patterns[pattern].size() + chunkSize - 1) / chunkSize;
-
-            std::vector<std::vector<unsigned>> outerRowIds(noPartition);
-            std::vector<bool> first(noPartition, false);
-            unsigned added = 0;
-            for (unsigned inner = 0; inner < chunkSize; ++inner)
+            Encoding encoding;
+            encoding.mask = static_cast<MASK>(pattern);
+            for (unsigned i = 0; i < patterns[pattern].size(); ++i)
             {
-                for (unsigned part = 0; part < noPartition; ++part)
-                {
-                    if (first[part] == false)
-                    {
-                        first[part] = true;
-                    }
-                    if (added < patterns[pattern].size())
-                    {
-                        outerRowIds[part].emplace_back(patterns[pattern][added++]);
-                    }
-                }
+                max = std::max(max, patterns[pattern][i]);
+                encoding.rowIds.emplace_back(patterns[pattern][i]);
             }
-            for (unsigned part = 0; part < noPartition; ++part)
-            {
-                Encoding encoding;
-                encoding.mask = static_cast<MASK>(pattern);
-                for (unsigned i = 0; i < outerRowIds[part].size(); ++i)
-                {
-                    encoding.rowIds.emplace_back(outerRowIds[part][i]);
-                }
-                encodings.emplace_back(encoding);
-            }
+            encodings.emplace_back(encoding);
         }
-        
-        this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes[sliceSet], rowIds[sliceSet], noMasks, m_SliceSize_Hub);
+
+        this->bucketDistribution(encodings, max + 1, sliceSet);
+        LocalityStatistics stats = this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes[sliceSet], rowIds[sliceSet], noMasks, m_SliceSize_Hub, sliceSet);
+        if (!encodings.empty())
+        {
+            //printf("Slice Set: %u, No Complete Work: %u, No Incomplete Work: %u, Average word per memory request: %f, Average encoding size: %f, Std encoding size: %f\n", sliceSet, stats.complete, stats.incomplete, stats.wordPerMemory_avg, stats.encodingSize_avg, stats.encodingSize_dev);
+        }
         m_SliceSetPtrs_Hub[sliceSet + 1] = encodingSizes[sliceSet].size();
 
         assert(encodingSizes[sliceSet].size() == masks[sliceSet].size() * noMasks);
@@ -375,57 +368,219 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
 
     unsigned noSlices = m_EncodingPtrs_Hub[m_SliceSetPtrs_Hub[m_NoSliceSets_Hub]];
 
-    m_RowIds_Hub = new unsigned[noSlices]; // you get row from slice
+    m_RowIds_Hub = new unsigned[noSlices];
     idx = 0;
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets_Hub; ++sliceSet)
     {
         for (unsigned i = 0; i < rowIds[sliceSet].size(); ++i)
         {
-            m_RowIds_Hub[idx++] = rowIds[sliceSet][i];
+            m_RowIds_Hub[idx++] = rowIds[sliceSet][i]; // you get row from slice
         }
     }
 
     this->printHBRSHubData();
 }
 
-void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize)
+void HBRS::bucketDistribution(std::vector<Encoding>& encodings, unsigned max, unsigned sliceSet)
 {
+    const unsigned BUCKET_RANGE = 8192;
+
+    const unsigned numBuckets = (max + BUCKET_RANGE - 1) / BUCKET_RANGE;
+    std::vector<std::vector<Encoding>> buckets(numBuckets);
+
+    for (const auto& enc: encodings)
+    {
+        const auto& rows = enc.rowIds;
+        unsigned i = 0;
+        while (i < rows.size())
+        {
+            const unsigned bucketId = rows[i] / BUCKET_RANGE;
+
+            Encoding part;
+            part.mask = enc.mask;
+
+            while (i < rows.size() && (rows[i] / BUCKET_RANGE) == bucketId)
+            {
+                part.rowIds.emplace_back(rows[i]);
+                ++i;
+            }
+            buckets[bucketId].emplace_back(std::move(part));
+        }
+    }
+
+    std::vector<Encoding> out;
+    out.reserve(encodings.size());
+    unsigned completeCount = 0;
+    unsigned incompleteCount = 0;
+    for (auto& bucket: buckets)
+    {
+        if (bucket.size() >= 128)
+        {
+            ++completeCount;
+        }
+        else
+        {
+            ++incompleteCount;
+        }
+        std::sort(bucket.begin(), bucket.end(), [](const Encoding& a, const Encoding& b) 
+        {
+            return a.rowIds.size() < b.rowIds.size();
+        });
+        for (auto& e: bucket)
+        {
+            out.emplace_back(std::move(e));
+        }
+    }
+    encodings.swap(out);
+
+    if (sliceSet == 0)
+    {
+        //printf("Complete bucket count: %u - Incomplete bucket count: %u\n", completeCount, incompleteCount);
+    }
+}
+
+HBRS::LocalityStatistics HBRS::computeWarpLocalityStatistics(std::vector<Encoding>& warp, unsigned noMasks)
+{
+    LocalityStatistics stats;
+
+    unsigned encCount = static_cast<unsigned>(warp.size());
+
+    const auto idxOk = [&](unsigned mask, unsigned lane)
+    {
+        unsigned idx = mask * WARP_SIZE + lane;
+        return idx < encCount;
+    };
+
+    double sum = 0;
+    double sumsq = 0;
+    for (unsigned mask = 0; mask < noMasks; ++mask)
+    {
+        for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
+        {
+            if (!idxOk(mask, lane)) continue;
+            unsigned idx = mask * WARP_SIZE + lane;
+            double sz = static_cast<double>(warp[idx].rowIds.size());
+            sum += sz;
+            sumsq += sz * sz;
+        }
+    }
+    double count = static_cast<double>(encCount);
+    if (count > 0)
+    {
+        stats.encodingSize_avg = sum / count;
+        double var = sumsq / count - stats.encodingSize_avg * stats.encodingSize_avg;
+        stats.encodingSize_dev = std::sqrt(var);
+    }
+
+    unsigned wordCount = 0;
+    unsigned maxLen = 0;
+    for (unsigned i = 0; i < encCount; ++i)
+    {
+        maxLen = std::max(maxLen, static_cast<unsigned>(warp[i].rowIds.size()));
+    }
+
+    for (unsigned mask = 0; mask < noMasks; ++mask)
+    {
+        for (unsigned i = 0; i < maxLen; ++i)
+        {
+            std::unordered_map<unsigned, unsigned> freq;
+            bool any = false;
+            for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
+            {
+                if (!idxOk(mask, lane)) continue;
+                unsigned idx = mask * WARP_SIZE + lane;
+                const auto& rows = warp[idx].rowIds;
+                if (i < rows.size())
+                {
+                    any = true;
+                    unsigned word = rows[i] / MASK_BITS;
+                    if (freq.contains(word))
+                    {
+                        ++freq[word];
+                    }
+                    else
+                    {
+                        freq[word] = 1;
+                    }
+                }
+            }
+            if (any) 
+            {
+                stats.wordPerMemory_avg += freq.size();
+                ++wordCount;
+            }
+        }
+    }
+    if (wordCount > 0)
+    {
+        stats.wordPerMemory_avg /= wordCount;
+    }
+    stats.complete = (warp.size() == WARP_SIZE * noMasks);
+    stats.incomplete = !stats.complete;
+
+    return stats;
+}
+
+HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize, unsigned sliceSet)
+{
+    std::vector<LocalityStatistics> statistics;
+
     std::vector<Encoding> distributed;
 
-    unsigned current = 0;
     unsigned gridSize = WARP_SIZE * noMasks;
     std::vector<Encoding> warp;
     for (unsigned encoding = 0; encoding < encodings.size(); ++encoding)
     {
         warp.emplace_back(encodings[encoding]);
-        ++current;
-        if (current == gridSize)
+        if (warp.size() == gridSize)
         {
-            current = 0;
-            for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+            statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
+            //static bool flag = false;
+            for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
             {
-                for (unsigned iter = thread; iter < warp.size(); iter += WARP_SIZE)
+                for (unsigned mask = 0; mask < noMasks; ++mask)
                 {
-                    distributed.emplace_back(warp[iter]);
+                    unsigned current = mask * WARP_SIZE + lane;
+                    /*
+                    if (mask == 0 && sliceSet == 0 && !flag)
+                    {
+                        std::cout << "Thread: " << lane << std::endl;
+                        for (unsigned i = 0; i < warp[current].rowIds.size(); ++i)
+                        {
+                            std::cout << warp[current].rowIds[i] << ' ';
+                        }
+                        std::cout << std::endl;
+                    }
+                    */
+                    distributed.emplace_back(warp[current]);
                 }
             }
+            /*
+            if (sliceSet == 0)
+            {
+                flag = true;
+            }
+            */
             warp.clear();
         }
     }
     if (!warp.empty())
     {
-        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+        statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
+        for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
         {
-            if (thread >= warp.size())
+            /*
+            if (lane >= warp.size())
             {
                 break;
             }
+            */
             for (unsigned mask = 0; mask < noMasks; ++mask)
             {
-                unsigned encoding = mask * WARP_SIZE + thread;
-                if (encoding < warp.size())
+                unsigned current = mask * WARP_SIZE + lane;
+                if (current < warp.size())
                 {
-                    distributed.emplace_back(warp[encoding]);
+                    distributed.emplace_back(warp[current]);
                 }
                 else
                 {
@@ -458,6 +613,24 @@ void HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vect
     }
 
     assert(cumulativeCounter == 0);
+
+    LocalityStatistics total;
+    for (const auto& s: statistics) 
+    {
+        total.wordPerMemory_avg += s.wordPerMemory_avg;
+        total.encodingSize_avg += s.encodingSize_avg;
+        total.encodingSize_dev += s.encodingSize_dev;
+        total.complete += s.complete;
+        total.incomplete += s.incomplete;
+    }
+    if (!statistics.empty()) 
+    {
+        total.wordPerMemory_avg /= statistics.size();
+        total.encodingSize_avg /= statistics.size();
+        total.encodingSize_dev /= statistics.size();
+    }
+
+    return total;
 }
 
 void HBRS::printHBRSData()
@@ -470,7 +643,6 @@ void HBRS::printHBRSData()
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices: " << m_SliceSetPtrs[m_NoSliceSets] << std::endl;
-    std::cout << "Number of slices in each set row: " << K / m_SliceSize << std::endl;
     std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 
     unsigned empty = 0;
@@ -503,6 +675,7 @@ void HBRS::printHBRSData()
     unsigned chunkSize = (m_NoSliceSets + noChunks - 1) / noChunks;
     for (unsigned q = 0; q < noChunks; ++q)
     {
+        bool chunkEmpty = true;
         unsigned start = q * chunkSize;
         unsigned end = std::min(m_NoSliceSets, start + chunkSize);
 
@@ -515,12 +688,16 @@ void HBRS::printHBRSData()
                 thisChunkSetBits += __builtin_popcount(m_Masks[ptr]);
             }
             totalSliceSeen += (m_SliceSetPtrs[set + 1] - m_SliceSetPtrs[set]);
+            chunkEmpty &= (m_SliceSetPtrs[set + 1] == m_SliceSetPtrs[set]);
         }
 
         noSetBits += thisChunkSetBits;
         double compressionEff = thisChunkSetBits;
         compressionEff /= (totalSliceSeen * m_SliceSize);
-        std::cout << "Chunk: " << q << " - Slice Count: " << totalSliceSeen << " - Bits: " << thisChunkSetBits << " - Compression Efficiency: " << compressionEff << std::endl;
+        if (!chunkEmpty)
+        {
+            std::cout << "Chunk: " << q << " - Slice Count: " << totalSliceSeen << " - Bits: " << thisChunkSetBits << " - Compression Efficiency: " << compressionEff << std::endl;
+        }
     }
     double compressionEff = noSetBits;
     compressionEff /= ((m_SliceSetPtrs[m_NoSliceSets] / noMasks) * MASK_BITS);
@@ -594,6 +771,7 @@ void HBRS::printHBRSHubData()
     MASK andMask = (0xFFFFFFFF >> (MASK_BITS - m_SliceSize_Hub));
     for (unsigned q = 0; q < noChunks; ++q)
     {
+        bool chunkEmpty = true;
         unsigned start = q * chunkSize;
         unsigned end = std::min(m_NoSliceSets_Hub, start + chunkSize);
 
@@ -616,16 +794,20 @@ void HBRS::printHBRSHubData()
 
             maskBitsChunk += (encodingsInSet * m_SliceSize_Hub);
             baselineBitsChunk += (slicesInSet * m_SliceSize_Hub);
+            chunkEmpty &= (m_SliceSetPtrs_Hub[set + 1] == m_SliceSetPtrs_Hub[set]);
         }
 
         totalMaskBits += maskBitsChunk;
         totalBaselineBits += baselineBitsChunk;
 
         double chunkEff = double(baselineBitsChunk) / maskBitsChunk;
-        std::cout << "Chunk: " << q
-                  << " - Baseline bits: " << baselineBitsChunk
-                  << " - Stored mask bits: " << maskBitsChunk
-                  << " - Compression efficiency: x" << chunkEff << std::endl;
+        if (!chunkEmpty)
+        {
+            std::cout << "Chunk: " << q
+            << " - Baseline bits: " << baselineBitsChunk
+            << " - Stored mask bits: " << maskBitsChunk
+            << " - Compression efficiency: x" << chunkEff << std::endl;
+        }
     }
 
     unsigned long long storedMaskBits = noEncodings* m_SliceSize_Hub;

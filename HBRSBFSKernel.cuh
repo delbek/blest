@@ -70,7 +70,10 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            atomicAdd(frontierNextSizePtr, 1);
+                            if ((old & 0x000000FF) == 0) 
+                            {
+                                atomicAdd(frontierNextSizePtr, 1);
+                            }
                         }
                     }
                     if (fragC[1])
@@ -82,7 +85,10 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            atomicAdd(frontierNextSizePtr, 1);
+                            if ((old & 0x0000FF00) == 0) 
+                            {
+                                atomicAdd(frontierNextSizePtr, 1);
+                            }
                         }
                     }
 
@@ -108,7 +114,10 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            atomicAdd(frontierNextSizePtr, 1);
+                            if ((old & 0x00FF0000) == 0) 
+                            {
+                                atomicAdd(frontierNextSizePtr, 1);
+                            }
                         }
                     }
                     if (fragC[1])
@@ -120,7 +129,10 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            atomicAdd(frontierNextSizePtr, 1);
+                            if ((old & 0xFF000000) == 0) 
+                            {
+                                atomicAdd(frontierNextSizePtr, 1);
+                            }
                         }
                     }
                 }
@@ -177,6 +189,7 @@ namespace HBRSBFSKernels
                     fragC[0] = fragC[1] = 0;
                     m8n8k128(fragC, fragA, fragB);
                     
+                    bool increment = false;
                     if (fragC[0])
                     {
                         unsigned encoding = encodingTile * 4;
@@ -190,7 +203,10 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                atomicAdd(frontierNextSizePtr, 1);
+                                if ((old & 0x000000FF) == 0) 
+                                {
+                                    increment |= true;
+                                }
                             }
                         }
                     }
@@ -207,7 +223,10 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                atomicAdd(frontierNextSizePtr, 1);
+                                if ((old & 0x0000FF00) == 0) 
+                                {
+                                    increment |= true;
+                                }
                             }
                         }
                     }
@@ -238,7 +257,10 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                atomicAdd(frontierNextSizePtr, 1);
+                                if ((old & 0x00FF0000) == 0) 
+                                {
+                                    increment |= true;
+                                }
                             }
                         }
                     }
@@ -255,9 +277,16 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                atomicAdd(frontierNextSizePtr, 1);
+                                if ((old & 0xFF000000) == 0) 
+                                {
+                                    increment |= true;
+                                }
                             }
                         }
+                    }
+                    if (increment)
+                    {
+                        atomicAdd(frontierNextSizePtr, 1);
                     }
                 }
             }
@@ -325,7 +354,10 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                atomicAdd(frontierNextSizePtr, 1);
+                                if ((old & 0x0000FFFF) == 0) 
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
                             }
                         }
                     }
@@ -342,7 +374,10 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                atomicAdd(frontierNextSizePtr, 1);
+                                if ((old & 0xFFFF0000) == 0) 
+                                {
+                                    atomicAdd(frontierNextSizePtr, 1);
+                                }
                             }
                         }
                     }
@@ -363,6 +398,7 @@ public:
     virtual ~HBRSBFSKernel() = default;
 
     virtual double hostCode(unsigned sourceVertex) final;
+    double hostCodeLoadImbalanced(unsigned sourceVertex);
 };
 
 HBRSBFSKernel::HBRSBFSKernel(BitMatrix* matrix)
@@ -372,6 +408,11 @@ HBRSBFSKernel::HBRSBFSKernel(BitMatrix* matrix)
 }
 
 double HBRSBFSKernel::hostCode(unsigned sourceVertex)
+{
+    return this->hostCodeLoadImbalanced(sourceVertex);
+}
+
+double HBRSBFSKernel::hostCodeLoadImbalanced(unsigned sourceVertex)
 {
     HBRS* hbrs = dynamic_cast<HBRS*>(matrix);
 
@@ -512,6 +553,7 @@ double HBRSBFSKernel::hostCode(unsigned sourceVertex)
     gridSizeHub = std::min(unsigned(gridSizeHub), noSliceSets_Hub);
     blockSizeHub = noSliceSets_Hub / gridSizeHub;
     for (; blockSizeHub % WARP_SIZE != 0; ++blockSizeHub);
+    blockSizeHub = std::min(1024, blockSizeHub);
     
     unsigned frontierSize = 1;
     unsigned totalVisited = frontierSize;
@@ -572,7 +614,7 @@ double HBRSBFSKernel::hostCode(unsigned sourceVertex)
         totalVisited += frontierSize;
     }
     double end = omp_get_wtime();
-    std::cout << "Total traversed vertex count: " << totalVisited << std::endl;
+    //std::cout << "Total traversed vertex count: " << totalVisited << std::endl;
 
     cudaStreamDestroy(streamHub);
     cudaStreamDestroy(streamNormal);

@@ -37,8 +37,8 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
+export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-16}
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-16}
 
 mkdir -p ${repo_directory}build
 cd ${repo_directory}build

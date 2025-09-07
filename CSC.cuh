@@ -18,13 +18,15 @@ public:
     ~CSC();
 
     unsigned* reorderFromFile(std::string filename);
-    double avgDegree();
+    unsigned* degreeSort();
     unsigned* hubPartition(unsigned& k);
-    void applyPermutation(unsigned* inversePermutation);
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned* getColPtrs() {return m_ColPtrs;}
     [[nodiscard]] inline unsigned* getRows() {return m_Rows;}
+
+private:
+    void applyPermutation(unsigned* inversePermutation);
 
 private:
     unsigned m_N;
@@ -173,30 +175,48 @@ unsigned* CSC::reorderFromFile(std::string filename)
     return inversePermutation;
 }
 
-double CSC::avgDegree()
+unsigned* CSC::degreeSort()
 {
-    double avg = 0;
+    std::vector<std::pair<unsigned, unsigned>> degrees(m_N);
+
     for (unsigned j = 0; j < m_N; ++j)
     {
-        avg += (m_ColPtrs[j + 1] - m_ColPtrs[j]);
+        degrees[j].first = j;
+        degrees[j].second = m_ColPtrs[j + 1] - m_ColPtrs[j];
     }
-    return (avg / m_N);
+    std::sort(degrees.begin(), degrees.end(),
+    [](const auto& a, const auto& b)
+    {
+        if (a.second != b.second) return a.second > b.second;
+        return a.first < b.first;
+    });
+
+    unsigned* inversePermutation = new unsigned[m_N];
+
+    for (unsigned j = 0; j < m_N; ++j)
+    {
+        inversePermutation[degrees[j].first] = j;
+    }
+
+    applyPermutation(inversePermutation);
+
+    return inversePermutation;
 }
 
 unsigned* CSC::hubPartition(unsigned& k)
 {
-    unsigned* inversePermutation = new unsigned[m_N];
+    unsigned* inversePermutation = this->degreeSort();
 
-    unsigned located = 0;
+    k = m_N;
     for (unsigned j = 0; j < m_N; ++j)
     {
-        if ((m_ColPtrs[j + 1] - m_ColPtrs[j]) < 50)
+        if (m_ColPtrs[j + 1] - m_ColPtrs[j] < 128)
         {
-            inversePermutation[j] = (m_N - (++located));
+            k = j;
+            break;
         }
     }
 
-    k = (m_N - located);
     return inversePermutation;
 }
 
@@ -204,25 +224,31 @@ void CSC::applyPermutation(unsigned* inversePermutation)
 {
     unsigned* newColPtrs = new unsigned[m_N + 1];
     std::fill(newColPtrs, newColPtrs + m_N + 1, 0);
-    unsigned* newRows = new unsigned[m_NNZ];
 
-    for (unsigned j = 0; j < m_N; ++j)
+    for (unsigned oldCol = 0; oldCol < m_N; ++oldCol)
     {
-        unsigned newCol = inversePermutation[j];
-        newColPtrs[newCol + 1] = m_ColPtrs[j + 1] - m_ColPtrs[j];
+        unsigned newCol = inversePermutation[oldCol];
+        newColPtrs[newCol + 1] = m_ColPtrs[oldCol + 1] - m_ColPtrs[oldCol];
     }
-    
+
     for (unsigned j = 0; j < m_N; ++j)
     {
         newColPtrs[j + 1] += newColPtrs[j];
     }
 
-    for (unsigned j = 0; j < m_N; ++j)
+    unsigned* newRows = new unsigned[m_NNZ];
+
+    for (unsigned oldCol = 0; oldCol < m_N; ++oldCol)
     {
-        unsigned newCol = inversePermutation[j];
-        for (unsigned idx = 0; idx < (m_ColPtrs[j + 1] - m_ColPtrs[j]); ++idx)
+        unsigned newCol = inversePermutation[oldCol];
+        unsigned start = m_ColPtrs[oldCol];
+        unsigned end = m_ColPtrs[oldCol + 1];
+
+        for (unsigned nnz = start; nnz < end; ++nnz)
         {
-            newRows[newColPtrs[newCol] + idx] = inversePermutation[m_Rows[m_ColPtrs[j] + idx]];
+            unsigned oldRow = m_Rows[nnz];
+            unsigned newRow = inversePermutation[oldRow];
+            newRows[newColPtrs[newCol] + (nnz - start)] = newRow;
         }
     }
 

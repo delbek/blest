@@ -1,9 +1,8 @@
-- current approach of partitioning normal from hub is not that bad in CSC.cuh but degree sort is more appropriate as we slide k at the beginning of the construction of HBRS to make k a multiple of m_SliceSize_Hub, in which case we include columns that are not hub into the hub partition.
-- id ordering -> 1)sort each encoding 2)sort the encodings lexicographically 3)if consecutive encodings differs in cardinality, split them and form new encodings off of it
 - encoding ordering -> aim to order so that threads within the same warp gets same result from the multiplication (gray-code ordering)
 - complete/incomplete warp separation -> complete warps are given to tensor cores, invalid ones are to cuda cores
 - cache row ids on-chip
 - row id compression
 - sparse encoding and sparse mma
 - load balance arrays
+- spspmv
 - pipelining

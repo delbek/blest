@@ -14,7 +14,7 @@ public:
     virtual ~BFSKernel() = default;
 
     virtual double hostCode(unsigned sourceVertex) = 0;
-    void runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore, unsigned* inversePermutation = nullptr);
+    double runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore, unsigned* inversePermutation = nullptr);
 
 protected:
     BitMatrix* matrix;
@@ -26,7 +26,7 @@ BFSKernel::BFSKernel(BitMatrix* matrix)
 
 }
 
-void BFSKernel::runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore, unsigned* inversePermutation)
+double BFSKernel::runBFS(std::string sourceVerticesFilename, unsigned nRun, unsigned nIgnore, unsigned* inversePermutation)
 {
     std::ifstream file(sourceVerticesFilename);
     if (!file.is_open())
@@ -59,9 +59,9 @@ void BFSKernel::runBFS(std::string sourceVerticesFilename, unsigned nRun, unsign
     }
     total /= iter;
 
-    std::cout << "Average time took per BFS iteration: " << total * 1000 << " ms." << std::endl;
-
     file.close();
+
+    return total * 1000;
 }
 
 #endif
