@@ -189,7 +189,6 @@ namespace HBRSBFSKernels
                     fragC[0] = fragC[1] = 0;
                     m8n8k128(fragC, fragA, fragB);
                     
-                    bool increment = false;
                     if (fragC[0])
                     {
                         unsigned encoding = encodingTile * 4;
@@ -205,7 +204,7 @@ namespace HBRSBFSKernels
                                 old = atomicOr(&frontierNext[word], temp);
                                 if ((old & 0x000000FF) == 0) 
                                 {
-                                    increment |= true;
+                                    atomicAdd(frontierNextSizePtr, 1);
                                 }
                             }
                         }
@@ -225,7 +224,7 @@ namespace HBRSBFSKernels
                                 old = atomicOr(&frontierNext[word], temp);
                                 if ((old & 0x0000FF00) == 0) 
                                 {
-                                    increment |= true;
+                                    atomicAdd(frontierNextSizePtr, 1);
                                 }
                             }
                         }
@@ -259,7 +258,7 @@ namespace HBRSBFSKernels
                                 old = atomicOr(&frontierNext[word], temp);
                                 if ((old & 0x00FF0000) == 0) 
                                 {
-                                    increment |= true;
+                                    atomicAdd(frontierNextSizePtr, 1);
                                 }
                             }
                         }
@@ -279,14 +278,10 @@ namespace HBRSBFSKernels
                                 old = atomicOr(&frontierNext[word], temp);
                                 if ((old & 0xFF000000) == 0) 
                                 {
-                                    increment |= true;
+                                    atomicAdd(frontierNextSizePtr, 1);
                                 }
                             }
                         }
-                    }
-                    if (increment)
-                    {
-                        atomicAdd(frontierNextSizePtr, 1);
                     }
                 }
             }

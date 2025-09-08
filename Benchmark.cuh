@@ -38,15 +38,12 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/home/delbek/sutensor/wikipedia-20070206.mtx", "/arf/home/delbek/sutensor/wikipedia-20070206.txt", false, true}
-        /*
+        {"/arf/home/delbek/sutensor/wikipedia-20070206.mtx", "/arf/home/delbek/sutensor/wikipedia-20070206.txt", false, true},
         {"/arf/home/delbek/sutensor/com-LiveJournal.mtx", "/arf/home/delbek/sutensor/com-LiveJournal.txt", true, true},
         {"/arf/home/delbek/sutensor/wb-edu.mtx", "/arf/home/delbek/sutensor/wb-edu.txt", false, true},
         {"/arf/home/delbek/sutensor/eu-2005.mtx", "/arf/home/delbek/sutensor/eu-2005.txt", false, true},
         {"/arf/home/delbek/sutensor/indochina-2004.mtx", "/arf/home/delbek/sutensor/indochina-2004.txt", false, true},
         {"/arf/home/delbek/sutensor/GAP-road.mtx", "/arf/home/delbek/sutensor/GAP-road.txt", true, false}
-        */
-
     };
 
     for (const auto& matrix: matrices)
