@@ -538,32 +538,14 @@ HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& 
         if (warp.size() == gridSize)
         {
             statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
-            //static bool flag = false;
             for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
             {
                 for (unsigned mask = 0; mask < noMasks; ++mask)
                 {
                     unsigned current = mask * WARP_SIZE + lane;
-                    /*
-                    if (sliceSet == 0 && !flag)
-                    {
-                        std::cout << "Thread: " << lane << std::endl;
-                        for (unsigned i = 0; i < warp[current].rowIds.size(); ++i)
-                        {
-                            std::cout << warp[current].rowIds[i] << ' ';
-                        }
-                        std::cout << std::endl;
-                    }
-                    */
                     distributed.emplace_back(warp[current]);
                 }
             }
-            /*
-            if (sliceSet == 0)
-            {
-                flag = true;
-            }
-            */
             warp.clear();
         }
     }
@@ -572,10 +554,12 @@ HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& 
         statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
         for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
         {
+            /*
             if (lane >= warp.size())
             {
                 break;
             }
+            */
             for (unsigned mask = 0; mask < noMasks; ++mask)
             {
                 unsigned current = mask * WARP_SIZE + lane;
@@ -593,6 +577,7 @@ HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& 
             }
         }
     }
+    assert(distributed.size() % (WARP_SIZE * noMasks) == 0);
 
     MASK cumulative = 0;
     unsigned cumulativeCounter = 0;
