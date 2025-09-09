@@ -70,6 +70,7 @@ private:
     
     void bucketDistribution(std::vector<Encoding>& encodings, unsigned max);
     LocalityStatistics distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize);
+
     LocalityStatistics computeWarpLocalityStatistics(std::vector<Encoding>& warp, unsigned noMasks);
 
 private:
@@ -554,12 +555,6 @@ HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& 
         statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
         for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
         {
-            /*
-            if (lane >= warp.size())
-            {
-                break;
-            }
-            */
             for (unsigned mask = 0; mask < noMasks; ++mask)
             {
                 unsigned current = mask * WARP_SIZE + lane;
@@ -597,7 +592,6 @@ HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& 
             cumulativeCounter = 0;
         }
     }
-
     assert(cumulativeCounter == 0);
 
     LocalityStatistics total;

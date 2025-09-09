@@ -72,7 +72,7 @@ namespace BRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x000000FF) == 0) 
+                                if ((old & 0x000000FF) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -87,7 +87,7 @@ namespace BRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x0000FF00) == 0) 
+                                if ((old & 0x0000FF00) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -116,7 +116,7 @@ namespace BRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x00FF0000) == 0) 
+                                if ((old & 0x00FF0000) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -131,7 +131,7 @@ namespace BRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0xFF000000) == 0) 
+                                if ((old & 0xFF000000) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -319,7 +319,7 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    if ((old & 0x000000FF) == 0) 
+                                    if ((old & 0x000000FF) == 0)
                                     {
                                         atomicAdd(frontierNextSizePtr, 1);
                                     }
@@ -340,7 +340,7 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    if ((old & 0x0000FF00) == 0) 
+                                    if ((old & 0x0000FF00) == 0)
                                     {
                                         atomicAdd(frontierNextSizePtr, 1);
                                     }
@@ -361,7 +361,7 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    if ((old & 0x00FF0000) == 0) 
+                                    if ((old & 0x00FF0000) == 0)
                                     {
                                         atomicAdd(frontierNextSizePtr, 1);
                                     }
@@ -382,7 +382,7 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    if ((old & 0xFF000000) == 0) 
+                                    if ((old & 0xFF000000) == 0)
                                     {
                                         atomicAdd(frontierNextSizePtr, 1);
                                     }

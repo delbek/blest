@@ -70,7 +70,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x000000FF) == 0) 
+                            if ((old & 0x000000FF) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -85,7 +85,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x0000FF00) == 0) 
+                            if ((old & 0x0000FF00) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -114,7 +114,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x00FF0000) == 0) 
+                            if ((old & 0x00FF0000) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -129,7 +129,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0xFF000000) == 0) 
+                            if ((old & 0xFF000000) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -202,7 +202,7 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x000000FF) == 0) 
+                                if ((old & 0x000000FF) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -222,7 +222,7 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x0000FF00) == 0) 
+                                if ((old & 0x0000FF00) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -256,7 +256,7 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x00FF0000) == 0) 
+                                if ((old & 0x00FF0000) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -276,7 +276,7 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0xFF000000) == 0) 
+                                if ((old & 0xFF000000) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -349,7 +349,7 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0x0000FFFF) == 0) 
+                                if ((old & 0x0000FFFF) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -369,7 +369,7 @@ namespace HBRSBFSKernels
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
-                                if ((old & 0xFFFF0000) == 0) 
+                                if ((old & 0xFFFF0000) == 0)
                                 {
                                     atomicAdd(frontierNextSizePtr, 1);
                                 }
@@ -445,7 +445,7 @@ namespace HBRSBFSKernels
                     if ((old & temp) == 0)
                     {
                         old = atomicOr(&frontierNext[word], temp);
-                        if ((old & 0x000000FF) == 0) 
+                        if ((old & 0x000000FF) == 0)
                         {
                             atomicAdd(frontierNextSizePtr, 1);
                         }
@@ -460,7 +460,7 @@ namespace HBRSBFSKernels
                     if ((old & temp) == 0)
                     {
                         old = atomicOr(&frontierNext[word], temp);
-                        if ((old & 0x0000FF00) == 0) 
+                        if ((old & 0x0000FF00) == 0)
                         {
                             atomicAdd(frontierNextSizePtr, 1);
                         }
@@ -489,7 +489,7 @@ namespace HBRSBFSKernels
                     if ((old & temp) == 0)
                     {
                         old = atomicOr(&frontierNext[word], temp);
-                        if ((old & 0x00FF0000) == 0) 
+                        if ((old & 0x00FF0000) == 0)
                         {
                             atomicAdd(frontierNextSizePtr, 1);
                         }
@@ -504,7 +504,7 @@ namespace HBRSBFSKernels
                     if ((old & temp) == 0)
                     {
                         old = atomicOr(&frontierNext[word], temp);
-                        if ((old & 0xFF000000) == 0) 
+                        if ((old & 0xFF000000) == 0)
                         {
                             atomicAdd(frontierNextSizePtr, 1);
                         }
@@ -575,7 +575,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x000000FF) == 0) 
+                            if ((old & 0x000000FF) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -595,7 +595,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x0000FF00) == 0) 
+                            if ((old & 0x0000FF00) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -629,7 +629,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x00FF0000) == 0) 
+                            if ((old & 0x00FF0000) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -649,7 +649,7 @@ namespace HBRSBFSKernels
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0xFF000000) == 0) 
+                            if ((old & 0xFF000000) == 0)
                             {
                                 atomicAdd(frontierNextSizePtr, 1);
                             }
@@ -951,10 +951,8 @@ void HBRSBFSKernel::generateBalancingArrays(unsigned& warpNumberNormal, unsigned
     unsigned noMasks_Hub = MASK_BITS / sliceSize_Hub;
 
     unsigned totalWork = noEncodings_Hub + noSlices;
-    assert(totalWork % (WARP_SIZE * noMasks) == 0);
-
     unsigned workPerWarp = WARP_SIZE * noMasks;
-    assert(workPerWarp % (WARP_SIZE * noMasks) == 0);
+    assert(totalWork % workPerWarp == 0);
 
     // Normal
     std::vector<unsigned> ptrs;
@@ -987,14 +985,14 @@ void HBRSBFSKernel::generateBalancingArrays(unsigned& warpNumberNormal, unsigned
     ids.clear();
     for (unsigned sliceSet = 0; sliceSet < noSliceSets_Hub; ++sliceSet)
     {
-        unsigned sliceCountThisSet = sliceSetPtrs_Hub[sliceSet + 1] - sliceSetPtrs_Hub[sliceSet];
-        if (sliceCountThisSet == 0)
+        unsigned encodingCountThisSet = sliceSetPtrs_Hub[sliceSet + 1] - sliceSetPtrs_Hub[sliceSet];
+        if (encodingCountThisSet == 0)
         {
             continue;
         }
-        for (unsigned offs = 0; offs < sliceCountThisSet; offs += workPerWarp) 
+        for (unsigned offs = 0; offs < encodingCountThisSet; offs += workPerWarp) 
         {
-            unsigned assign = std::min(workPerWarp, sliceCountThisSet - offs);
+            unsigned assign = std::min(workPerWarp, encodingCountThisSet - offs);
             ptrs.emplace_back(ptrs.back() + assign);
             ids.emplace_back(sliceSet);
         }
