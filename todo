@@ -1,8 +1,6 @@
-- load balancing over slices (with normalizing coefficient added for HUB partition)
 - encoding ordering -> aim to order so that threads within the same warp gets same result from the multiplication (gray-code ordering)
 - complete/incomplete warp separation -> complete warps are given to tensor cores, invalid ones are to cuda cores
 - cache row ids on-chip
 - row id compression
-- sparse encoding and sparse mma
 - spspmv
 - pipelining

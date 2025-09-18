@@ -210,7 +210,7 @@ unsigned* CSC::hubPartition(unsigned& k)
     k = m_N;
     for (unsigned j = 0; j < m_N; ++j)
     {
-        if (m_ColPtrs[j + 1] - m_ColPtrs[j] < 256)
+        if (m_ColPtrs[j + 1] - m_ColPtrs[j] < 512)
         {
             k = j;
             break;

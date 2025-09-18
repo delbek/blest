@@ -517,7 +517,7 @@ namespace HBRSBFSKernels
     __global__ void HBRSBFS8HubLoadBalanced(    const unsigned* const __restrict__ noWarpsPtr,
                                                 const unsigned* const __restrict__ warpPtrs,
                                                 const unsigned* const __restrict__ sliceSetIds,
-                                                const unsigned* const __restrict__ encodingPtrs,
+                                                unsigned* const __restrict__ encodingPtrs,
                                                 const unsigned* const __restrict__ rowIds,
                                                 const MASK* const __restrict__ masks,
                                                 const MASK* const __restrict__ frontier,
@@ -525,6 +525,7 @@ namespace HBRSBFSKernels
                                                 unsigned* const __restrict__ frontierNextSizePtr,
                                                 MASK* const __restrict__ frontierNext)
     {
+        auto warp = coalesced_threads();
         unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
         unsigned warpID = threadID / WARP_SIZE;
         unsigned laneID = threadID % WARP_SIZE;
@@ -561,47 +562,6 @@ namespace HBRSBFSKernels
                 unsigned fragC[2];
                 fragC[0] = fragC[1] = 0;
                 m8n8k128(fragC, fragA, fragB);
-                
-                if (fragC[0])
-                {
-                    unsigned encoding = encodingTile * 4;
-                    for (unsigned slice = encodingPtrs[encoding]; slice < encodingPtrs[encoding + 1]; ++slice)
-                    {
-                        unsigned row = rowIds[slice];
-                        unsigned word = row / MASK_BITS;
-                        unsigned bit = row % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x000000FF) == 0)
-                            {
-                                atomicAdd(frontierNextSizePtr, 1);
-                            }
-                        }
-                    }
-                }
-                if (fragC[1])
-                {
-                    unsigned encoding = encodingTile * 4 + 1;
-                    for (unsigned slice = encodingPtrs[encoding]; slice < encodingPtrs[encoding + 1]; ++slice)
-                    {
-                        unsigned row = rowIds[slice];
-                        unsigned word = row / MASK_BITS;
-                        unsigned bit = row % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x0000FF00) == 0)
-                            {
-                                atomicAdd(frontierNextSizePtr, 1);
-                            }
-                        }
-                    }
-                }
 
                 fragA = (mask & 0xFFFF0000);
                 fragB = 0;
@@ -613,46 +573,122 @@ namespace HBRSBFSKernels
                 {
                     fragB = origFragB << 16;
                 }
-                fragC[0] = fragC[1] = 0;
-                m8n8k128(fragC, fragA, fragB);
+                unsigned fragCPrime[2];
+                fragCPrime[0] = fragCPrime[1] = 0;
+                m8n8k128(fragCPrime, fragA, fragB);
 
-                if (fragC[0])
+                for (unsigned lane = 0; lane < WARP_SIZE; ++lane)
                 {
-                    unsigned encoding = encodingTile * 4 + 2;
-                    for (unsigned slice = encodingPtrs[encoding]; slice < encodingPtrs[encoding + 1]; ++slice)
+                    unsigned current = tile + lane;
+                    if (warp.shfl(fragC[0], lane))
                     {
-                        unsigned row = rowIds[slice];
-                        unsigned word = row / MASK_BITS;
-                        unsigned bit = row % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
+                        unsigned encoding = current * 4;
+                        unsigned start = encodingPtrs[encoding];
+                        unsigned set = start >> 31;
+                        if (!set)
                         {
-                            old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0x00FF0000) == 0)
+                            unsigned end = encodingPtrs[encoding + 1] & 0x7FFFFFFF;
+                            for (unsigned slice = start + laneID; slice < end; slice += WARP_SIZE)
                             {
-                                atomicAdd(frontierNextSizePtr, 1);
+                                unsigned row = rowIds[slice];
+                                unsigned word = row / MASK_BITS;
+                                unsigned bit = row % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0x000000FF) == 0)
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
                             }
+                            encodingPtrs[encoding] |= (static_cast<unsigned>(1) << 31);
                         }
                     }
-                }
-                if (fragC[1])
-                {
-                    unsigned encoding = encodingTile * 4 + 3;
-                    for (unsigned slice = encodingPtrs[encoding]; slice < encodingPtrs[encoding + 1]; ++slice)
+
+                    if (warp.shfl(fragC[1], lane))
                     {
-                        unsigned row = rowIds[slice];
-                        unsigned word = row / MASK_BITS;
-                        unsigned bit = row % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
+                        unsigned encoding = current * 4 + 1;
+                        unsigned start = encodingPtrs[encoding];
+                        unsigned set = start >> 31;
+                        if (!set)
                         {
-                            old = atomicOr(&frontierNext[word], temp);
-                            if ((old & 0xFF000000) == 0)
+                            unsigned end = encodingPtrs[encoding + 1] & 0x7FFFFFFF;
+                            for (unsigned slice = start + laneID; slice < end; slice += WARP_SIZE)
                             {
-                                atomicAdd(frontierNextSizePtr, 1);
+                                unsigned row = rowIds[slice];
+                                unsigned word = row / MASK_BITS;
+                                unsigned bit = row % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0x0000FF00) == 0)
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
                             }
+                            encodingPtrs[encoding] |= (static_cast<unsigned>(1) << 31);
+                        }
+                    }
+
+                    if (warp.shfl(fragCPrime[0], lane))
+                    {
+                        unsigned encoding = current * 4 + 2;
+                        unsigned start = encodingPtrs[encoding];
+                        unsigned set = start >> 31;
+                        if (!set)
+                        {
+                            unsigned end = encodingPtrs[encoding + 1] & 0x7FFFFFFF;
+                            for (unsigned slice = start + laneID; slice < end; slice += WARP_SIZE)
+                            {
+                                unsigned row = rowIds[slice];
+                                unsigned word = row / MASK_BITS;
+                                unsigned bit = row % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0x00FF0000) == 0)
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
+                            }
+                            encodingPtrs[encoding] |= (static_cast<unsigned>(1) << 31);
+                        }
+                    }
+
+                    if (warp.shfl(fragCPrime[1], lane))
+                    {
+                        unsigned encoding = current * 4 + 3;
+                        unsigned start = encodingPtrs[encoding];
+                        unsigned set = start >> 31;
+                        if (!set)
+                        {
+                            unsigned end = encodingPtrs[encoding + 1] & 0x7FFFFFFF;
+                            for (unsigned slice = start + laneID; slice < end; slice += WARP_SIZE)
+                            {
+                                unsigned row = rowIds[slice];
+                                unsigned word = row / MASK_BITS;
+                                unsigned bit = row % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    if ((old & 0xFF000000) == 0)
+                                    {
+                                        atomicAdd(frontierNextSizePtr, 1);
+                                    }
+                                }
+                            }
+                            encodingPtrs[encoding] |= (static_cast<unsigned>(1) << 31);
                         }
                     }
                 }
@@ -965,7 +1001,7 @@ void HBRSBFSKernel::generateBalancingArrays(unsigned& warpNumberNormal, unsigned
         {
             continue;
         }
-        for (unsigned offs = 0; offs < sliceCountThisSet; offs += workPerWarp) 
+        for (unsigned offs = 0; offs < sliceCountThisSet; offs += workPerWarp)
         {
             unsigned assign = std::min(workPerWarp, sliceCountThisSet - offs);
             ptrs.emplace_back(ptrs.back() + assign);

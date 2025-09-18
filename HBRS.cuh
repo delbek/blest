@@ -67,9 +67,10 @@ private:
 
     void constructHubFromCSCMatrix(CSC* csc);
     void printHBRSHubData();
-    
-    void bucketDistribution(std::vector<Encoding>& encodings, unsigned max);
-    LocalityStatistics distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize);
+
+    LocalityStatistics distributeEncodingsToWarpNormal(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize);
+
+    LocalityStatistics distributeEncodingsToWarpHub(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize);
 
     LocalityStatistics computeWarpLocalityStatistics(std::vector<Encoding>& warp, unsigned noMasks);
 
@@ -203,8 +204,7 @@ void HBRS::constructNormalFromCSCMatrix(CSC* csc)
             i = nextRow;
         }
 
-        std::vector<unsigned> encodingSizes;
-        LocalityStatistics stats = this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes, rowIds[sliceSet], noMasks, m_SliceSize);
+        LocalityStatistics stats = this->distributeEncodingsToWarpNormal(encodings, masks[sliceSet], rowIds[sliceSet], noMasks, m_SliceSize);
         m_SliceSetPtrs[sliceSet + 1] = rowIds[sliceSet].size();
 
         assert(rowIds[sliceSet].size() == masks[sliceSet].size() * noMasks);
@@ -312,24 +312,28 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
         }
 
         std::vector<Encoding> encodings;
-        unsigned max = 0;
 
         for (unsigned pattern = 1; pattern < patterns.size(); ++pattern)
         {
             if (patterns[pattern].empty()) continue;
 
-            Encoding encoding;
-            encoding.mask = static_cast<MASK>(pattern);
-            for (unsigned i = 0; i < patterns[pattern].size(); ++i)
+            unsigned const MAX_ENCODING_SIZE = 32;
+            unsigned noPartition = (patterns[pattern].size() + MAX_ENCODING_SIZE - 1) / MAX_ENCODING_SIZE;
+            for (unsigned part = 0; part < noPartition; ++part)
             {
-                max = std::max(max, patterns[pattern][i]);
-                encoding.rowIds.emplace_back(patterns[pattern][i]);
+                Encoding encoding;
+                encoding.mask = static_cast<MASK>(pattern);
+                unsigned start = part * MAX_ENCODING_SIZE;
+                unsigned end = std::min(start + MAX_ENCODING_SIZE, static_cast<unsigned>(patterns[pattern].size()));
+                for (unsigned i = start; i < end; ++i)
+                {
+                    encoding.rowIds.emplace_back(patterns[pattern][i]);
+                }
+                encodings.emplace_back(encoding);
             }
-            encodings.emplace_back(encoding);
         }
 
-        this->bucketDistribution(encodings, max + 1);
-        LocalityStatistics stats = this->distributeEncodingsToWarp(encodings, masks[sliceSet], encodingSizes[sliceSet], rowIds[sliceSet], noMasks, m_SliceSize_Hub);
+        LocalityStatistics stats = this->distributeEncodingsToWarpHub(encodings, masks[sliceSet], encodingSizes[sliceSet], rowIds[sliceSet], noMasks, m_SliceSize_Hub);
         if (!encodings.empty())
         {
             //printf("Slice Set: %u, No Complete Work: %u, No Incomplete Work: %u, Average word per memory request: %f, Average encoding size: %f, Std encoding size: %f\n", sliceSet, stats.complete, stats.incomplete, stats.wordPerMemory_avg, stats.encodingSize_avg, stats.encodingSize_dev);
@@ -344,9 +348,9 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
         m_SliceSetPtrs_Hub[sliceSet + 1] += m_SliceSetPtrs_Hub[sliceSet]; // you get encoding from slice set
     }
 
-    unsigned noUniqueSlices = m_SliceSetPtrs_Hub[m_NoSliceSets_Hub];
+    unsigned noEncodings = m_SliceSetPtrs_Hub[m_NoSliceSets_Hub];
 
-    m_Masks_Hub = new MASK[noUniqueSlices / noMasks];
+    m_Masks_Hub = new MASK[noEncodings / noMasks];
     unsigned idx = 0;
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets_Hub; ++sliceSet)
     {
@@ -356,8 +360,8 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
         }
     }
 
-    m_EncodingPtrs_Hub = new unsigned[noUniqueSlices + 1];
-    std::fill(m_EncodingPtrs_Hub, m_EncodingPtrs_Hub + noUniqueSlices + 1, 0);
+    m_EncodingPtrs_Hub = new unsigned[noEncodings + 1];
+    std::fill(m_EncodingPtrs_Hub, m_EncodingPtrs_Hub + noEncodings + 1, 0);
     idx = 0;
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets_Hub; ++sliceSet)
     {
@@ -381,66 +385,6 @@ void HBRS::constructHubFromCSCMatrix(CSC* csc)
     }
 
     this->printHBRSHubData();
-}
-
-void HBRS::bucketDistribution(std::vector<Encoding>& encodings, unsigned max)
-{
-    const unsigned BUCKET_RANGE = max;
-    const unsigned MAX_ENCODING_SIZE = 32;
-
-    const unsigned numBuckets = (max + BUCKET_RANGE - 1) / BUCKET_RANGE;
-    std::vector<std::vector<Encoding>> buckets(numBuckets);
-
-    for (const auto& enc: encodings)
-    {
-        const auto& rows = enc.rowIds;
-        unsigned i = 0;
-        while (i < rows.size())
-        {
-            const unsigned bucketId = rows[i] / BUCKET_RANGE;
-
-            Encoding part;
-            part.mask = enc.mask;
-
-            while (i < rows.size() && (rows[i] / BUCKET_RANGE) == bucketId)
-            {
-                part.rowIds.emplace_back(rows[i]);
-                ++i;
-            }
-            buckets[bucketId].emplace_back(std::move(part));
-        }
-    }
-
-    std::vector<Encoding> out;
-    out.reserve(encodings.size());
-    for (const auto& bucket: buckets)
-    {
-        for (auto& e: bucket)
-        {
-            if (e.rowIds.size() > MAX_ENCODING_SIZE)
-            {
-                unsigned noPartition = (e.rowIds.size() + MAX_ENCODING_SIZE - 1) / MAX_ENCODING_SIZE;
-                for (unsigned part = 0; part < noPartition; ++part)
-                {
-                    unsigned start = part * MAX_ENCODING_SIZE;
-                    unsigned end = std::min(start + MAX_ENCODING_SIZE, static_cast<unsigned>(e.rowIds.size()));
-                    Encoding newEncoding;
-                    newEncoding.mask = e.mask;
-                    for (unsigned i = start; i < end; ++i)
-                    {
-                        newEncoding.rowIds.emplace_back(e.rowIds[i]);
-                    }
-                    out.emplace_back(newEncoding);
-                }
-            }
-            else
-            {
-                out.emplace_back(e);
-            }
-        }
-    }
-
-    encodings.swap(out);
 }
 
 HBRS::LocalityStatistics HBRS::computeWarpLocalityStatistics(std::vector<Encoding>& warp, unsigned noMasks)
@@ -525,7 +469,85 @@ HBRS::LocalityStatistics HBRS::computeWarpLocalityStatistics(std::vector<Encodin
     return stats;
 }
 
-HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize)
+HBRS::LocalityStatistics HBRS::distributeEncodingsToWarpHub(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& encodingSizes, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize)
+{
+    std::vector<LocalityStatistics> statistics;
+
+    std::vector<Encoding> distributed;
+
+    unsigned gridSize = WARP_SIZE * noMasks;
+    std::vector<Encoding> warp;
+    for (unsigned encoding = 0; encoding < encodings.size(); ++encoding)
+    {
+        warp.emplace_back(encodings[encoding]);
+        if (warp.size() == gridSize)
+        {
+            statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
+            for (unsigned i = 0; i < gridSize; ++i)
+            {
+                distributed.emplace_back(warp[i]);
+            }
+            warp.clear();
+        }
+    }
+    if (!warp.empty())
+    {
+        statistics.emplace_back(this->computeWarpLocalityStatistics(warp, noMasks));
+        unsigned i;
+        for (i = 0; i < warp.size(); ++i)
+        {
+            distributed.emplace_back(warp[i]);
+        }
+        for (; i < gridSize; ++i)
+        {
+            Encoding emptyEncoding;
+            emptyEncoding.mask = static_cast<MASK>(0);
+            emptyEncoding.rowIds.emplace_back(0);
+            distributed.emplace_back(emptyEncoding);
+        }
+    }
+    assert(distributed.size() % (WARP_SIZE * noMasks) == 0);
+
+    MASK cumulative = 0;
+    unsigned cumulativeCounter = 0;
+    for (unsigned encoding = 0; encoding < distributed.size(); ++encoding)
+    {
+        cumulative |= (static_cast<MASK>(distributed[encoding].mask << (sliceSize * cumulativeCounter++)));
+        const std::vector<unsigned>& rows = distributed[encoding].rowIds;
+        encodingSizes.emplace_back(rows.size());
+        for (unsigned i = 0; i < rows.size(); ++i)
+        {
+            rowIds.emplace_back(rows[i]);
+        }
+        if (cumulativeCounter == noMasks)
+        {
+            masks.emplace_back(cumulative);
+            cumulative = 0;
+            cumulativeCounter = 0;
+        }
+    }
+    assert(cumulativeCounter == 0);
+
+    LocalityStatistics total;
+    for (const auto& s: statistics) 
+    {
+        total.wordPerMemory_avg += s.wordPerMemory_avg;
+        total.encodingSize_avg += s.encodingSize_avg;
+        total.encodingSize_dev += s.encodingSize_dev;
+        total.complete += s.complete;
+        total.incomplete += s.incomplete;
+    }
+    if (!statistics.empty()) 
+    {
+        total.wordPerMemory_avg /= statistics.size();
+        total.encodingSize_avg /= statistics.size();
+        total.encodingSize_dev /= statistics.size();
+    }
+
+    return total;
+}
+
+HBRS::LocalityStatistics HBRS::distributeEncodingsToWarpNormal(std::vector<Encoding>& encodings, std::vector<MASK>& masks, std::vector<unsigned>& rowIds, unsigned noMasks, unsigned sliceSize)
 {
     std::vector<LocalityStatistics> statistics;
 
@@ -579,9 +601,8 @@ HBRS::LocalityStatistics HBRS::distributeEncodingsToWarp(std::vector<Encoding>& 
     for (unsigned encoding = 0; encoding < distributed.size(); ++encoding)
     {
         cumulative |= (static_cast<MASK>(distributed[encoding].mask << (sliceSize * cumulativeCounter++)));
-        encodingSizes.emplace_back(distributed[encoding].rowIds.size());
         const std::vector<unsigned>& rows = distributed[encoding].rowIds;
-        for (unsigned i = 0; i < encodingSizes.back(); ++i)
+        for (unsigned i = 0; i < rows.size(); ++i)
         {
             rowIds.emplace_back(rows[i]);
         }

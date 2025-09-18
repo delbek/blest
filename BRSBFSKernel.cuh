@@ -33,7 +33,7 @@ namespace BRSBFSKernels
             for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
             {
                 unsigned shift = (sliceSet % 4) * 8;
-                MASK origFragB = ((frontier[sliceSet / 4] >> shift) & 0x000000FF);
+                MASK origFragB = ((frontier[sliceSet >> 2] >> shift) & 0x000000FF);
                 if (origFragB)
                 {
                     unsigned tileStart = sliceSetPtrs[sliceSet] / 4;

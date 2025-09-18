@@ -20,8 +20,6 @@ public:
 
     void constructFromCSCMatrix(CSC* csc);
     void printBRSData();
-    void coalescingTest();
-    void pattern8Test();
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned getSliceSize() {return m_SliceSize;}
@@ -69,12 +67,11 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         throw std::runtime_error("Invalid slice size provided.");
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned noWarpSlice = (K / m_SliceSize) * 8;
+    unsigned noWarpSlice = WARP_SIZE * noMasks;
 
     std::vector<std::vector<unsigned>> rowIds(m_NoSliceSets);
     std::vector<std::vector<MASK>> masks(m_NoSliceSets);
 
-    unsigned noEmptySliceSets = 0;
     #pragma omp parallel for num_threads(omp_get_max_threads())
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
     {
@@ -134,10 +131,11 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 {
                     MASK cumulative = 0;
                     unsigned cumulativeCounter = 0;
-                    for (unsigned k = thread; k < noWarpSlice; k += WARP_SIZE)
+                    for (unsigned mask = 0; mask < noMasks; ++mask)
                     {
-                        rowIds[sliceSet].emplace_back(tempRowIds[k]);
-                        cumulative |= (static_cast<MASK>(tempMasks[k] << (m_SliceSize * cumulativeCounter++)));
+                        unsigned current = mask * WARP_SIZE + thread;
+                        rowIds[sliceSet].emplace_back(tempRowIds[current]);
+                        cumulative |= (static_cast<MASK>(tempMasks[current] << (m_SliceSize * cumulativeCounter++)));
                     }
                     masks[sliceSet].emplace_back(cumulative);
                 }
@@ -148,8 +146,30 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             i = nextRow;
         }
 
-        if (tempRowIds.size() != 0) // perhaps this could be written in a way first n with 4 * n <= tempRowIds.size() is found and then n thread distribution can be made before leftovers are distributed to (32 - n) threads in a non-coalesced manner
+        if (tempRowIds.size() != 0)
         {
+            /*
+            for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+            {
+                MASK cumulative = 0;
+                unsigned cumulativeCounter = 0;
+                for (unsigned mask = 0; mask < noMasks; ++mask)
+                {
+                    unsigned current = mask * WARP_SIZE + thread;
+                    if (current < tempRowIds.size())
+                    {
+                        rowIds[sliceSet].emplace_back(tempRowIds[current]);
+                        cumulative |= (static_cast<MASK>(tempMasks[current] << (m_SliceSize * cumulativeCounter++)));
+                    }
+                    else
+                    {
+                        rowIds[sliceSet].emplace_back(0);
+                    }
+                }
+                masks[sliceSet].emplace_back(cumulative);
+            }
+            */
+
             MASK cumulative = 0;
             unsigned cumulativeCounter = 0;
             for (unsigned k = 0; k < tempRowIds.size(); ++k)
@@ -159,14 +179,13 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 if (cumulativeCounter == noMasks)
                 {
                     masks[sliceSet].emplace_back(cumulative);
-                    cumulativeCounter = 0;
                     cumulative = 0;
+                    cumulativeCounter = 0;
                 }
             }
-
             if (cumulativeCounter != 0)
             {
-                for (unsigned k = cumulativeCounter; k < noMasks; ++k)
+                for (; cumulativeCounter < noMasks; ++cumulativeCounter)
                 {
                     rowIds[sliceSet].emplace_back(0);
                 }
@@ -175,14 +194,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
 
         assert(rowIds[sliceSet].size() == masks[sliceSet].size() * noMasks);
-
-        if (rowIds[sliceSet].size() == 0)
-        {
-            #pragma omp critical
-            {
-                ++noEmptySliceSets;
-            }
-        }
     }
 
     for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet) 
@@ -209,115 +220,8 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             m_Masks[idx++] = masks[sliceSet][i];
         }
     }
-}
 
-void BRS::coalescingTest()
-{
-    m_NoSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
-
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-    constexpr unsigned CACHELINE_SIZE = 256;
-
-    double setAverage = 0;
-    #pragma omp parallel for num_threads(omp_get_max_threads())
-    for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
-    {
-        unsigned tileStart = m_SliceSetPtrs[sliceSet] / noMasks;
-        unsigned tileEnd = m_SliceSetPtrs[sliceSet + 1] / noMasks;
-
-        double average = 0;
-        unsigned total = 0;
-        for (unsigned tilePtr = tileStart; tilePtr < tileEnd; tilePtr += WARP_SIZE)
-        {
-            std::vector<std::unordered_map<unsigned, unsigned>> maps(noMasks);
-            for (unsigned i = 0; i < WARP_SIZE; ++i)
-            {
-                if (tilePtr + i < tileEnd)
-                {
-                    for (unsigned slice = 0; slice < noMasks; ++slice)
-                    {
-                        unsigned rowIdx = m_RowIds[(tilePtr + i) * noMasks + slice];
-                        unsigned bucket = rowIdx / CACHELINE_SIZE;
-                        if (maps[slice].contains(bucket))
-                        {
-                            ++maps[slice][bucket];
-                        }
-                        else
-                        {
-                            maps[slice][bucket] = 1;
-                        }
-                    }
-                }
-            }
-            double running = 0;
-            for (unsigned slice = 0; slice < noMasks; ++slice)
-            {
-                running += maps[slice].size();
-            }
-            running /= noMasks;
-            average += running;
-            ++total;
-        }
-        average /= total; // works only on the assumption that there exists no empty slice set
-        #pragma omp critical
-        {
-            setAverage += average;
-        }
-    }
-    setAverage /= m_NoSliceSets;
-    std::cout << "Number of cache lines needed for each mma on bit result on average: " << setAverage << std::endl;
-}
-
-void BRS::pattern8Test()
-{
-    std::vector<std::vector<unsigned>> patterns(m_N, std::vector<unsigned>(256, 0));
-
-    for (unsigned sliceSet = 0; sliceSet < m_NoSliceSets; ++sliceSet)
-    {
-        unsigned tileStart = m_SliceSetPtrs[sliceSet] / 4;
-        unsigned tileEnd = m_SliceSetPtrs[sliceSet + 1] / 4;
-
-        for (unsigned tilePtr = tileStart; tilePtr < tileEnd; ++tilePtr)
-        {
-            for (unsigned slice = 0; slice < 4; ++slice)
-            {
-                unsigned row = m_RowIds[tilePtr * 4 + slice];
-                unsigned char mask = static_cast<unsigned char>((m_Masks[tilePtr] >> (slice * 8)) & (0x000000FF));
-                ++patterns[row][mask];
-            }
-        }
-    }
-    double average = 0;
-    double maxAverage = 0;
-    unsigned maxAverageRow = 0;
-    #pragma omp parallel for num_threads(omp_get_max_threads())
-    for (unsigned i = 0; i < m_N; ++i)
-    {
-        double averageRow = 0;
-        unsigned countRow = 0;
-        for (unsigned pattern = 0; pattern < patterns[i].size(); ++pattern)
-        {
-            unsigned freq = patterns[i][pattern];
-            if (freq != 0)
-            {
-                averageRow += freq;
-                ++countRow;
-            }
-        }
-        averageRow /= countRow; // works only on the assumption that there exists no empty row
-        #pragma omp critical
-        {
-            if (averageRow > maxAverage)
-            {
-                maxAverage = averageRow;
-                maxAverageRow = i;
-            }
-            average += averageRow;
-        }
-    }
-    average /= m_N;
-    std::cout << "Max average seen in the row id: " << maxAverageRow << " with value: " << maxAverage << std::endl;
-    std::cout << "Average count of each pattern reduced row-wise: " << average << std::endl;
+    this->printBRSData();
 }
 
 void BRS::printBRSData()
@@ -328,15 +232,20 @@ void BRS::printBRSData()
     std::cout << "Slice size: " << m_SliceSize << std::endl;
     std::cout << "Number of slice sets: " << m_NoSliceSets << std::endl;
     std::cout << "Number of slices: " << m_SliceSetPtrs[m_NoSliceSets] << std::endl;
-    std::cout << "Number of slices in each set row: " << K / m_SliceSize << std::endl;
     std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 
+    unsigned empty = 0;
     double average = 0;
     for (unsigned ss = 0; ss < m_NoSliceSets; ++ss)
     {
+        if (m_SliceSetPtrs[ss + 1] == m_SliceSetPtrs[ss])
+        {
+            ++empty;
+        }
         average += (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
     }
     average /= m_NoSliceSets;
+    std::cout << "Number of empty slice sets: " << empty << std::endl;
     std::cout << "Average number of slices in each set " << average << std::endl;
 
     double variance = 0;
@@ -350,33 +259,34 @@ void BRS::printBRSData()
     double standardDeviation = std::sqrt(variance);
     std::cout << "Standard deviation of the number of slices in each set: " << standardDeviation << std::endl;
 
-    unsigned noSetBits = 0;
+    unsigned totalNumberOfEdgesCheck = 0;
     unsigned noChunks = 10;
     unsigned chunkSize = (m_NoSliceSets + noChunks - 1) / noChunks;
     for (unsigned q = 0; q < noChunks; ++q)
     {
+        bool chunkEmpty = true;
         unsigned start = q * chunkSize;
         unsigned end = std::min(m_NoSliceSets, start + chunkSize);
 
-        unsigned totalSliceSeen = 0;
-        unsigned thisChunkSetBits = 0;
         for (unsigned set = start; set < end; ++set)
         {
             for (unsigned ptr = m_SliceSetPtrs[set] / noMasks; ptr < m_SliceSetPtrs[set + 1] / noMasks; ++ptr)
             {
-                thisChunkSetBits += __builtin_popcount(m_Masks[ptr]);
+                totalNumberOfEdgesCheck += __builtin_popcount(m_Masks[ptr]);
             }
-            totalSliceSeen += (m_SliceSetPtrs[set + 1] - m_SliceSetPtrs[set]);
+            chunkEmpty &= (m_SliceSetPtrs[set + 1] == m_SliceSetPtrs[set]);
         }
 
-        noSetBits += thisChunkSetBits;
-        double compressionEff = thisChunkSetBits;
-        compressionEff /= (totalSliceSeen * m_SliceSize);
-        std::cout << "Chunk: " << q << " - Slice Count: " << totalSliceSeen << " - Bits: " << thisChunkSetBits << " - Compression Efficiency: " << compressionEff << std::endl;
+        if (!chunkEmpty)
+        {
+            std::cout << "Chunk: " << q 
+            << " - Slice Count: " << (m_SliceSetPtrs[end] - m_SliceSetPtrs[start])
+            << " - Bits: " << (m_SliceSetPtrs[end] - m_SliceSetPtrs[start]) * m_SliceSize << std::endl;
+        }
     }
-    double compressionEff = noSetBits;
-    compressionEff /= ((m_SliceSetPtrs[m_NoSliceSets] / noMasks) * MASK_BITS);
-    std::cout << "Total - Set Bits: " << noSetBits << " - Compression Efficiency: " << compressionEff << std::endl;
+    std::cout << "Bits (total): " << m_SliceSetPtrs[m_NoSliceSets] * m_SliceSize << std::endl;
+
+    std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 }
 
 #endif

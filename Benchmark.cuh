@@ -50,10 +50,10 @@ void Benchmark::main()
     {
         std::cout << "Matrix: " << matrix.filename << std::endl;
         double brs = runBRS(matrix);
-        double hbrs = runHBRS(matrix);
+        //double hbrs = runHBRS(matrix);
         std::cout << "BRS time: " << brs << std::endl;
-        std::cout << "HBRS time: " << hbrs << std::endl;
-        std::cout << "Speedup: " << brs / hbrs << 'x' << std::endl;
+        //std::cout << "HBRS time: " << hbrs << std::endl;
+        //std::cout << "Speedup: " << brs / hbrs << 'x' << std::endl;
         std::cout << "******************************" << std::endl;
     }
 }
