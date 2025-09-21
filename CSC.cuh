@@ -124,20 +124,22 @@ CSC::~CSC()
 
 unsigned* CSC::random()
 {
-    unsigned* inversePermutation = new unsigned[m_N];
-    std::vector<unsigned> perm(m_N);
-    for (unsigned i = 0; i < m_N; ++i)
+    auto rng = [&]()
     {
-        perm[i] = i;
-    }
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(perm.begin(), perm.end(), g);
+        static std::mt19937 gen(std::random_device{}());
+        return gen;
+    };
+    auto* inversePermutation = new unsigned[m_N];
+    std::vector<unsigned> perm(m_N);
+    std::iota(perm.begin(), perm.end(), 0);
+    std::shuffle(perm.begin(), perm.end(), rng());
 
     for (unsigned i = 0; i < m_N; ++i)
     {
         inversePermutation[perm[i]] = i;
     }
+    applyPermutation(inversePermutation);
+
     return inversePermutation;
 }
 
