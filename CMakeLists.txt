@@ -21,9 +21,15 @@ if(CUDAToolkit_FOUND)
 endif()
 
 include_directories(.)
+include_directories(Gorder)
 
 add_executable(sutensor
     main.cu
+    # Gorder
+    Gorder/Graph.cpp
+    Gorder/Util.cpp
+    Gorder/UnitHeap.cpp
+    # Gorder
 )
 
 target_link_libraries(sutensor

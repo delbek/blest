@@ -1,6 +1,7 @@
 #ifndef CSR_CUH
 #define CSR_CUH
 
+#include "Common.cuh"
 #include <fstream>
 #include <string>
 #include <vector>
@@ -10,20 +11,21 @@
 class CSR
 {
 public:
+    CSR();
     CSR(std::string filename, bool undirected, bool binary);
     CSR(const CSR& other) = delete;
     CSR(CSR&& other) noexcept = delete;
     CSR& operator=(const CSR& other) = delete;
     CSR& operator=(CSR&& other) noexcept = delete;
     ~CSR();
+
+    [[nodiscard]] inline unsigned& getN() {return m_N;}
+    [[nodiscard]] inline unsigned& getNNZ() {return m_NNZ;}
+    [[nodiscard]] inline unsigned*& getRowPtrs() {return m_RowPtrs;}
+    [[nodiscard]] inline unsigned*& getCols() {return m_Cols;}
     
-    unsigned* reorderFromFile(std::string filename);
     unsigned* degreeSort();
     void applyPermutation(unsigned* inversePermutation);
-
-    [[nodiscard]] inline unsigned getN() {return m_N;}
-    [[nodiscard]] inline unsigned* getRowPtrs() {return m_RowPtrs;}
-    [[nodiscard]] inline unsigned* getCols() {return m_Cols;}
 
 private:
     unsigned m_N;
@@ -105,24 +107,6 @@ CSR::CSR(std::string filename, bool undirected, bool binary)
     }
 }
 
-unsigned* CSR::reorderFromFile(std::string filename)
-{
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) 
-    {
-        std::cout << "Failed to open file from which to load reordering. Proceeding with natural ordering." << std::endl;
-        return nullptr;
-    }
-
-    unsigned* inversePermutation = new unsigned[m_N];
-    file.read(reinterpret_cast<char*>(inversePermutation), sizeof(unsigned) * m_N);
-    file.close();
-
-    applyPermutation(inversePermutation);
-
-    return inversePermutation;
-}
-
 unsigned* CSR::degreeSort()
 {
     unsigned* inversePermutation = new unsigned[m_N];
@@ -142,7 +126,6 @@ unsigned* CSR::degreeSort()
     {
         inversePermutation[frequencies[i].first] = i;
     }
-
     applyPermutation(inversePermutation);
 
     return inversePermutation;

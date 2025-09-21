@@ -8,6 +8,7 @@ namespace BRSBFSKernels
 {
     __global__ void BRSBFS8Enhanced(    const unsigned* const __restrict__ noSliceSetsPtr,
                                         const unsigned* const __restrict__ sliceSetPtrs,
+                                        const unsigned* const __restrict__ sliceSetIds,
                                         const unsigned* const __restrict__ rowIds,
                                         const MASK* const __restrict__ masks,
                                         const unsigned* const __restrict__ noWordsPtr,
@@ -32,8 +33,9 @@ namespace BRSBFSKernels
         {
             for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
             {
-                unsigned shift = (sliceSet % 4) * 8;
-                MASK origFragB = ((frontier[sliceSet >> 2] >> shift) & 0x000000FF);
+                unsigned realSliceSetId = sliceSetIds[sliceSet];
+                unsigned shift = (realSliceSetId % 4) << 3;
+                MASK origFragB = ((frontier[realSliceSetId >> 2] >> shift) & 0x000000FF);
                 if (origFragB)
                 {
                     unsigned tileStart = sliceSetPtrs[sliceSet] / 4;
@@ -537,6 +539,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned sliceSize = brs->getSliceSize();
     unsigned noSliceSets = brs->getNoSliceSets();
     unsigned* sliceSetPtrs = brs->getSliceSetPtrs();
+    unsigned* sliceSetIds = brs->getSliceSetIds();
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
 
@@ -544,10 +547,6 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     if (sliceSize == 8)
     {
         kernelPtr = (void*)BRSBFSKernels::BRSBFS8Enhanced;
-    }
-    else if (sliceSize == 32)
-    {
-        kernelPtr = (void*)BRSBFSKernels::BRSBFS32Enhanced;
     }
     else
     {
@@ -564,6 +563,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     unsigned* d_NoSliceSets;
     unsigned* d_SliceSetPtrs;
+    unsigned* d_SliceSetIds;
     unsigned* d_RowIds;
     MASK* d_Masks;
 
@@ -577,11 +577,13 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     // data structure
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_SliceSetIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets]))
     gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks)))
 
     gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_SliceSetIds, sliceSetIds, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets], cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks), cudaMemcpyHostToDevice))
 
@@ -609,6 +611,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     void* kernelArgs[] = {
                             (void*)&d_NoSliceSets,
                             (void*)&d_SliceSetPtrs,
+                            (void*)&d_SliceSetIds,
                             (void*)&d_RowIds,
                             (void*)&d_Masks,
                             (void*)&d_NoWords,
@@ -638,6 +641,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
+    gpuErrchk(cudaFree(d_SliceSetIds))
     gpuErrchk(cudaFree(d_RowIds))
     gpuErrchk(cudaFree(d_Masks))
     gpuErrchk(cudaFree(d_NoWords))

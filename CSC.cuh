@@ -1,15 +1,22 @@
 #ifndef CSC_CUH
 #define CSC_CUH
 
+#include "Common.cuh"
 #include <fstream>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <iostream>
+#include <random>
+
+// Gorder
+#include "Graph.h"
+// Gorder
 
 class CSC
 {
 public:
+    CSC() = default;
     CSC(std::string filename, bool undirected, bool binary);
     CSC(const CSC& other) = delete;
     CSC(CSC&& other) noexcept = delete;
@@ -17,15 +24,16 @@ public:
     CSC& operator=(CSC&& other) noexcept = delete;
     ~CSC();
 
-    unsigned* reorderFromFile(std::string filename);
+    [[nodiscard]] inline unsigned& getN() {return m_N;}
+    [[nodiscard]] inline unsigned& getNNZ() {return m_NNZ;}
+    [[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
+    [[nodiscard]] inline unsigned*& getRows() {return m_Rows;}
+
+    unsigned* random();
+    unsigned* jackard(unsigned sliceSize);
+    unsigned* gorder();
+    unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
     unsigned* degreeSort();
-    unsigned* hubPartition(unsigned& k);
-
-    [[nodiscard]] inline unsigned getN() {return m_N;}
-    [[nodiscard]] inline unsigned* getColPtrs() {return m_ColPtrs;}
-    [[nodiscard]] inline unsigned* getRows() {return m_Rows;}
-
-private:
     void applyPermutation(unsigned* inversePermutation);
 
 private:
@@ -114,63 +122,284 @@ CSC::~CSC()
     delete[] m_Rows;
 }
 
-unsigned* CSC::reorderFromFile(std::string filename)
+unsigned* CSC::random()
 {
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) 
+    unsigned* inversePermutation = new unsigned[m_N];
+    std::vector<unsigned> perm(m_N);
+    for (unsigned i = 0; i < m_N; ++i)
     {
-        std::cout << "Failed to open file from which to load reordering. Proceeding with natural ordering." << std::endl;
-        return nullptr;
+        perm[i] = i;
     }
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(perm.begin(), perm.end(), g);
+
+    for (unsigned i = 0; i < m_N; ++i)
+    {
+        inversePermutation[perm[i]] = i;
+    }
+    return inversePermutation;
+}
+
+unsigned* CSC::jackard(unsigned sliceSize)
+{
+    unsigned* inversePermutation = new unsigned[m_N];
+
+    std::vector<bool> permuted(m_N, false);
+
+    std::vector<unsigned> rowMark(m_N, 0);
+    unsigned epoch = 1;
+    unsigned unionSize = 0;
+
+    auto nextEpoch = [&]()
+    {
+        ++epoch;
+        unionSize = 0;
+        if (epoch == std::numeric_limits<unsigned>::max())
+        {
+            std::fill(rowMark.begin(), rowMark.end(), 0);
+            epoch = 1;
+        }
+    };
+    auto isMarked = [&](unsigned r)
+    {
+        return rowMark[r] == epoch;
+    };
+    auto markRow = [&](unsigned r)
+    {
+        if (rowMark[r] != epoch)
+        {
+            rowMark[r] = epoch;
+            ++unionSize;
+        }
+    };
+
+    unsigned noSliceSets = (m_N + sliceSize - 1) / sliceSize;
+    for (unsigned sliceSet = 0; sliceSet < noSliceSets; ++sliceSet)
+    {
+        nextEpoch();
+
+        unsigned sliceStart = sliceSet * sliceSize;
+        unsigned sliceEnd = std::min(sliceStart + sliceSize, m_N);
+
+        unsigned highestDegree = 0;
+        unsigned col = UNSIGNED_MAX;
+        for (unsigned j = 0; j < m_N; ++j)
+        {
+            if (!permuted[j])
+            {
+                unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
+                if (deg >= highestDegree)
+                {
+                    highestDegree = deg;
+                    col = j;
+                }
+            }
+        }
+        if (col == UNSIGNED_MAX) break;
+
+        for (unsigned nnz = m_ColPtrs[col]; nnz < m_ColPtrs[col + 1]; ++nnz)
+        {
+            unsigned r = m_Rows[nnz];
+            markRow(r);
+        }
+        inversePermutation[col] = sliceStart;
+        permuted[col] = true;
+
+        for (unsigned newCol = sliceStart + 1; newCol < sliceEnd; ++newCol)
+        {
+            double bestJackard = -1;
+            unsigned bestCol;
+            #pragma omp parallel num_threads(omp_get_max_threads())
+            {
+                double myBest = -1;
+                unsigned myCol;
+                #pragma omp for schedule(static)
+                for (unsigned j = 0; j < m_N; ++j)
+                {
+                    if (permuted[j]) continue;
+    
+                    unsigned inter = 0;
+                    for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
+                    {
+                        inter += isMarked(m_Rows[nnz]);
+                    }
+                    unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
+                    unsigned uni = unionSize + deg - inter;
+                    double currentJackard = (uni == 0) ? 1 : static_cast<double>(inter) / static_cast<double>(uni);
+    
+                    if (currentJackard > myBest)
+                    {
+                        myBest = currentJackard;
+                        myCol = j;
+                    }
+                }
+                #pragma omp critical
+                {
+                    if (myBest > bestJackard)
+                    {
+                        bestJackard = myBest;
+                        bestCol = myCol;
+                    }
+                }
+            }
+            if (bestJackard == -1) break;
+
+            for (unsigned nnz = m_ColPtrs[bestCol]; nnz < m_ColPtrs[bestCol + 1]; ++nnz)
+            {
+                unsigned r = m_Rows[nnz];
+                markRow(r);
+            }
+            inversePermutation[bestCol] = newCol;
+            permuted[bestCol] = true;
+        }
+    }
+    applyPermutation(inversePermutation);
+
+    return inversePermutation;
+}
+
+unsigned* CSC::gorder()
+{
+    unsigned sliceSize = 8;
+    unsigned windowSize = sliceSize * 65536;
+
+	Gorder::Graph g;
+	g.setFilename("gorder");
+	g.readGraph(m_N, m_NNZ, m_ColPtrs, m_Rows);
+	g.Transform();
+	std::vector<int> order;
+	g.GorderGreedy(order, windowSize);
 
     unsigned* inversePermutation = new unsigned[m_N];
-    file.read(reinterpret_cast<char*>(inversePermutation), sizeof(unsigned) * m_N);
-    file.close();
+    std::copy(order.data(), order.data() + m_N, inversePermutation);
+    applyPermutation(inversePermutation);
+    unsigned* inversePermutation2 = this->jackardWithWindow(sliceSize, windowSize);
 
-    unsigned* newColPtrs = new unsigned[m_N + 1];
-    unsigned* newRows = new unsigned[m_NNZ];
-
-    std::vector<std::pair<unsigned, unsigned>> nnzs;
-    nnzs.reserve(m_NNZ);
-    for (unsigned j = 0; j < m_N; ++j)
+    unsigned* mergedPermutation = new unsigned[m_N];
+    // merge permutations
+    for (unsigned i = 0; i < m_N; ++i)
     {
-        unsigned newCol = inversePermutation[j];
-        for (unsigned ptr = m_ColPtrs[j]; ptr < m_ColPtrs[j + 1]; ++ptr)
-        {
-            unsigned newRow = inversePermutation[m_Rows[ptr]];
-            nnzs.emplace_back(newRow, newCol);
-        }
+        mergedPermutation[i] = inversePermutation2[inversePermutation[i]];
     }
+    delete[] inversePermutation;
+    delete[] inversePermutation2;
+    //
+
+    return mergedPermutation;
+}
+
+unsigned* CSC::jackardWithWindow(unsigned sliceSize, unsigned windowSize)
+{
+    assert(windowSize % sliceSize == 0);
+
+    unsigned* inversePermutation = new unsigned[m_N];
+
+    unsigned noWindows = (m_N + windowSize - 1) / windowSize;
+    #pragma omp parallel for num_threads(omp_get_max_threads()) schedule(static)
+    for (unsigned window = 0; window < noWindows; ++window)
+    {
+        unsigned windowStart = window * windowSize;
+        unsigned windowEnd = std::min(windowStart + windowSize, m_N);
+        unsigned windowLength = windowEnd - windowStart;
+
+        std::vector<bool> permuted(m_N, false);
+
+        std::vector<unsigned> rowMark(m_N, 0);
+        unsigned epoch = 1;
+        unsigned unionSize = 0;
     
-    std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
-    {
-        if (a.second == b.second)
+        auto nextEpoch = [&]()
         {
-            return a.first < b.first;
-        }
-        else
+            ++epoch;
+            unionSize = 0;
+            if (epoch == std::numeric_limits<unsigned>::max())
+            {
+                std::fill(rowMark.begin(), rowMark.end(), 0);
+                epoch = 1;
+            }
+        };
+        auto isMarked = [&](unsigned r)
         {
-            return a.second < b.second;
+            return rowMark[r] == epoch;
+        };
+        auto markRow = [&](unsigned r)
+        {
+            if (rowMark[r] != epoch)
+            {
+                rowMark[r] = epoch;
+                ++unionSize;
+            }
+        };
+
+        unsigned noSliceSets = (windowLength + sliceSize - 1) / sliceSize;
+        for (unsigned sliceSet = 0; sliceSet < noSliceSets; ++sliceSet)
+        {
+            nextEpoch();
+    
+            unsigned sliceStart = windowStart + sliceSet * sliceSize;
+            unsigned sliceEnd = std::min(sliceStart + sliceSize, windowEnd);
+    
+            unsigned highestDegree = 0;
+            unsigned col = UNSIGNED_MAX;
+            for (unsigned j = windowStart; j < windowEnd; ++j)
+            {
+                if (!permuted[j])
+                {
+                    unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
+                    if (deg >= highestDegree)
+                    {
+                        highestDegree = deg;
+                        col = j;
+                    }
+                }
+            }
+            if (col == UNSIGNED_MAX) break;
+    
+            for (unsigned nnz = m_ColPtrs[col]; nnz < m_ColPtrs[col + 1]; ++nnz)
+            {
+                unsigned r = m_Rows[nnz];
+                markRow(r);
+            }
+            inversePermutation[col] = sliceStart;
+            permuted[col] = true;
+    
+            for (unsigned newCol = sliceStart + 1; newCol < sliceEnd; ++newCol)
+            {
+                double bestJackard = -1;
+                unsigned bestCol;
+                for (unsigned j = windowStart; j < windowEnd; ++j)
+                {
+                    if (permuted[j]) continue;
+
+                    unsigned inter = 0;
+                    for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
+                    {
+                        inter += isMarked(m_Rows[nnz]);
+                    }
+                    unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
+                    unsigned uni = unionSize + deg - inter;
+                    double currentJackard = (uni == 0) ? 1 : static_cast<double>(inter) / static_cast<double>(uni);
+
+                    if (currentJackard > bestJackard)
+                    {
+                        bestJackard = currentJackard;
+                        bestCol = j;
+                    }
+                }
+                if (bestJackard == -1) break;
+    
+                for (unsigned nnz = m_ColPtrs[bestCol]; nnz < m_ColPtrs[bestCol + 1]; ++nnz)
+                {
+                    unsigned r = m_Rows[nnz];
+                    markRow(r);
+                }
+                inversePermutation[bestCol] = newCol;
+                permuted[bestCol] = true;
+            }
         }
-    });
-
-    std::fill(newColPtrs, newColPtrs + m_N + 1, 0);
-
-    for (unsigned iter = 0; iter < m_NNZ; ++iter)
-    {
-        ++newColPtrs[nnzs[iter].second + 1];
-        newRows[iter] = nnzs[iter].first;
     }
-
-    for (unsigned j = 0; j < m_N; ++j)
-    {
-        newColPtrs[j + 1] += newColPtrs[j];
-    }
-
-    delete[] m_ColPtrs;
-    delete[] m_Rows;
-    m_ColPtrs = newColPtrs;
-    m_Rows = newRows;
+    applyPermutation(inversePermutation);
 
     return inversePermutation;
 }
@@ -197,25 +426,7 @@ unsigned* CSC::degreeSort()
     {
         inversePermutation[degrees[j].first] = j;
     }
-
     applyPermutation(inversePermutation);
-
-    return inversePermutation;
-}
-
-unsigned* CSC::hubPartition(unsigned& k)
-{
-    unsigned* inversePermutation = this->degreeSort();
-
-    k = m_N;
-    for (unsigned j = 0; j < m_N; ++j)
-    {
-        if (m_ColPtrs[j + 1] - m_ColPtrs[j] < 512)
-        {
-            k = j;
-            break;
-        }
-    }
 
     return inversePermutation;
 }
