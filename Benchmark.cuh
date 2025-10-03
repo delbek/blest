@@ -37,14 +37,12 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        /*
         {"/arf/home/delbek/sutensor/wikipedia-20070206.mtx", "/arf/home/delbek/sutensor/wikipedia-20070206.txt", false, true},
         {"/arf/home/delbek/sutensor/com-LiveJournal.mtx", "/arf/home/delbek/sutensor/com-LiveJournal.txt", true, true},
         {"/arf/home/delbek/sutensor/wb-edu.mtx", "/arf/home/delbek/sutensor/wb-edu.txt", false, true},
         {"/arf/home/delbek/sutensor/eu-2005.mtx", "/arf/home/delbek/sutensor/eu-2005.txt", false, true},
         {"/arf/home/delbek/sutensor/indochina-2004.mtx", "/arf/home/delbek/sutensor/indochina-2004.txt", false, true},
         {"/arf/home/delbek/sutensor/GAP-road.mtx", "/arf/home/delbek/sutensor/GAP-road.txt", true, false},
-        */
         {"/arf/home/delbek/sutensor/amazon-2008.mtx", "/arf/home/delbek/sutensor/amazon-2008.txt", false, true}
     };
 
@@ -60,13 +58,14 @@ void Benchmark::main()
 double Benchmark::runBRS(const Matrix& matrix)
 {
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
-    unsigned* inversePermutation = csc->jackard(8);
+    unsigned sliceSize = 8;
+    unsigned* inversePermutation = nullptr; //csc->gorder(sliceSize);
 
-    BRS* brs = new BRS(8);
+    BRS* brs = new BRS(sliceSize);
     brs->constructFromCSCMatrix(csc);
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    double time = kernel.runBFS(matrix.sourceFile, 10, 5, inversePermutation);
+    double time = kernel.runBFS(matrix.sourceFile, 15, 5, inversePermutation);
 
     delete csc;
     delete brs;

@@ -31,7 +31,7 @@ public:
 
     unsigned* random();
     unsigned* jackard(unsigned sliceSize);
-    unsigned* gorder();
+    unsigned* gorder(unsigned sliceSize);
     unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
     unsigned* degreeSort();
     void applyPermutation(unsigned* inversePermutation);
@@ -261,10 +261,9 @@ unsigned* CSC::jackard(unsigned sliceSize)
     return inversePermutation;
 }
 
-unsigned* CSC::gorder()
+unsigned* CSC::gorder(unsigned sliceSize)
 {
-    unsigned sliceSize = 8;
-    unsigned windowSize = sliceSize * 65536;
+    unsigned windowSize = sliceSize * 4096;
 
 	Gorder::Graph g;
 	g.setFilename("gorder");
