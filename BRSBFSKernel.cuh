@@ -90,12 +90,12 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.x / 8;
+                                        sparseFrontierNextIds[loc] = rows.x >> 3;
                                     }
                                 }
                             }
@@ -108,12 +108,12 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.y / 8;
+                                        sparseFrontierNextIds[loc] = rows.y >> 3;
                                     }
                                 }
                             }
@@ -136,12 +136,12 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.z / 8;
+                                        sparseFrontierNextIds[loc] = rows.z >> 3;
                                     }
                                 }
                             }
@@ -154,12 +154,12 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.w / 8;
+                                        sparseFrontierNextIds[loc] = rows.w >> 3;
                                     }
                                 }
                             }
@@ -191,13 +191,9 @@ namespace BRSBFSKernels
     
                             MASK fragA = (mask & 0x0000FFFF);
                             MASK fragB = 0;
-                            if (laneID % 9 == 4)
+                            if (laneID % 9 == 0 || laneID % 9 == 4)
                             {
-                                fragB = origFragB << 8;
-                            }
-                            else if (laneID % 9 == 0)
-                            {
-                                fragB = origFragB;
+                                fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 8);
                             }
                             unsigned fragC[2];
                             fragC[0] = fragC[1] = 0;
@@ -212,12 +208,12 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.x / 8;
+                                        sparseFrontierNextIds[loc] = rows.x >> 3;
                                     }
                                 }
                             }
@@ -230,25 +226,21 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.y / 8;
+                                        sparseFrontierNextIds[loc] = rows.y >> 3;
                                     }
                                 }
                             }
     
                             fragA = (mask & 0xFFFF0000);
                             fragB = 0;
-                            if (laneID % 9 == 4)
+                            if (laneID % 9 == 0 || laneID % 9 == 4)
                             {
-                                fragB = origFragB << 24;
-                            }
-                            else if (laneID % 9 == 0)
-                            {
-                                fragB = origFragB << 16;
+                                fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 8);
                             }
                             fragC[0] = fragC[1] = 0;
                             m8n8k128(fragC, fragA, fragB);
@@ -262,12 +254,12 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.z / 8;
+                                        sparseFrontierNextIds[loc] = rows.z >> 3;
                                     }
                                 }
                             }
@@ -280,12 +272,211 @@ namespace BRSBFSKernels
                                 if ((old & temp) == 0)
                                 {
                                     old = atomicOr(&frontierNext[word], temp);
-                                    unsigned byteIdx = (bit >> 3);
-                                    MASK byteMask = (static_cast<MASK>(0xFF) << (byteIdx * 8));
-                                    if ((old & byteMask) == 0)
+                                    unsigned sliceIdx = (bit >> 3);
+                                    MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                    if ((old & sliceMask) == 0)
                                     {
                                         unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                                        sparseFrontierNextIds[loc] = rows.w / 8;
+                                        sparseFrontierNextIds[loc] = rows.w >> 3;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            swap<MASK>(frontier, frontierNext);
+            swap<unsigned>(sparseFrontierIds, sparseFrontierNextIds);
+            swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
+            grid.sync();
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+
+            if (cont)
+            {
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+            }
+            grid.sync();
+        }
+    }
+
+    __global__ void BRSBFS16Enhanced(   const unsigned* const __restrict__ noSliceSetsPtr,
+                                        const unsigned* const __restrict__ sliceSetPtrs,
+                                        const unsigned* const __restrict__ sliceSetIds,
+                                        const unsigned* const __restrict__ sliceSetOffsets,
+                                        const unsigned* const __restrict__ rowIds,
+                                        const MASK* const __restrict__ masks,
+                                        const unsigned* const __restrict__ noWordsPtr,
+                                        const unsigned* const __restrict__ directionThresholdPtr,
+                                        // current
+                                        MASK* __restrict__ frontier,
+                                        unsigned* __restrict__ sparseFrontierIds,
+                                        unsigned* __restrict__ frontierCurrentSizePtr,
+                                        // next
+                                        MASK* __restrict__ frontierNext,
+                                        unsigned* __restrict__ sparseFrontierNextIds,
+                                        unsigned* __restrict__ frontierNextSizePtr,
+                                        //
+                                        MASK* const __restrict__ visited)
+    {
+        auto warp = coalesced_threads();
+        auto grid = this_grid();
+        unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        unsigned noThreads = gridDim.x * blockDim.x;
+        unsigned noWarps = noThreads / WARP_SIZE;
+        unsigned warpID = threadID / WARP_SIZE;
+        unsigned laneID = threadID % WARP_SIZE;
+
+        unsigned noWords = *noWordsPtr;
+        unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
+        unsigned noSliceSets = *noSliceSetsPtr;
+
+        bool cont = true;
+        while (cont)
+        {
+            unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            if (currentFrontierSize < DIRECTION_THRESHOLD)
+            {
+                for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
+                {
+                    unsigned realSliceSetId = sparseFrontierIds[i];
+                    unsigned shift = (realSliceSetId % 2) << 4;
+                    MASK origFragB = ((frontier[realSliceSetId >> 1] >> shift) & 0x0000FFFF);
+                    for (unsigned sliceSet = sliceSetOffsets[realSliceSetId]; sliceSet < sliceSetOffsets[realSliceSetId + 1]; ++sliceSet)
+                    {
+                        unsigned tileStart = sliceSetPtrs[sliceSet] / 2;
+                        unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 2;
+                        for (unsigned t = tileStart; t < tileEnd; t += WARP_SIZE)
+                        {
+                            unsigned tile = t + laneID;
+                            uint2 rows = {0, 0};
+                            MASK fragA = 0;
+                            if (tile < tileEnd)
+                            {
+                                rows = reinterpret_cast<const uint2*>(rowIds)[tile];
+                                fragA = masks[tile];
+                            }
+
+                            MASK fragB = 0;
+                            if (laneID % 9 == 0 || laneID % 9 == 4)
+                            {
+                                fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 16);
+                            }
+                            unsigned fragC[2];
+                            fragC[0] = fragC[1] = 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            
+                            if (fragC[0])
+                            {
+                                unsigned word = rows.x / MASK_BITS;
+                                unsigned bit = rows.x % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    unsigned sliceIdx = (bit >> 4);
+                                    MASK sliceMask = (static_cast<MASK>(0xFFFF) << (sliceIdx << 4));
+                                    if ((old & sliceMask) == 0)
+                                    {
+                                        unsigned loc = atomicAdd(frontierNextSizePtr, 1);
+                                        sparseFrontierNextIds[loc] = rows.x >> 4;
+                                    }
+                                }
+                            }
+                            if (fragC[1])
+                            {
+                                unsigned word = rows.y / MASK_BITS;
+                                unsigned bit = rows.y % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    unsigned sliceIdx = (bit >> 4);
+                                    MASK sliceMask = (static_cast<MASK>(0xFFFF) << (sliceIdx << 4));
+                                    if ((old & sliceMask) == 0)
+                                    {
+                                        unsigned loc = atomicAdd(frontierNextSizePtr, 1);
+                                        sparseFrontierNextIds[loc] = rows.y >> 4;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (unsigned sliceSet = warpID; sliceSet < noSliceSets; sliceSet += noWarps)
+                {
+                    unsigned realSliceSetId = sliceSetIds[sliceSet];
+                    unsigned shift = (realSliceSetId % 2) << 4;
+                    MASK origFragB = ((frontier[realSliceSetId >> 1] >> shift) & 0x0000FFFF);
+                    if (origFragB)
+                    {
+                        unsigned tileStart = sliceSetPtrs[sliceSet] / 2;
+                        unsigned tileEnd = sliceSetPtrs[sliceSet + 1] / 2;
+                        for (unsigned t = tileStart; t < tileEnd; t += WARP_SIZE)
+                        {
+                            unsigned tile = t + laneID;
+                            uint2 rows = {0, 0};
+                            MASK fragA = 0;
+                            if (tile < tileEnd)
+                            {
+                                rows = reinterpret_cast<const uint2*>(rowIds)[tile];
+                                fragA = masks[tile];
+                            }
+    
+                            MASK fragB = 0;
+                            if (laneID % 9 == 0 || laneID % 9 == 4)
+                            {
+                                fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 16);
+                            }
+                            unsigned fragC[2];
+                            fragC[0] = fragC[1] = 0;
+                            m8n8k128(fragC, fragA, fragB);
+                            
+                            if (fragC[0])
+                            {
+                                unsigned word = rows.x / MASK_BITS;
+                                unsigned bit = rows.x % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    unsigned sliceIdx = (bit >> 4);
+                                    MASK sliceMask = (static_cast<MASK>(0xFFFF) << (sliceIdx << 4));
+                                    if ((old & sliceMask) == 0)
+                                    {
+                                        unsigned loc = atomicAdd(frontierNextSizePtr, 1);
+                                        sparseFrontierNextIds[loc] = rows.x >> 4;
+                                    }
+                                }
+                            }
+                            if (fragC[1])
+                            {
+                                unsigned word = rows.y / MASK_BITS;
+                                unsigned bit = rows.y % MASK_BITS;
+                                MASK temp = (static_cast<MASK>(1) << bit);
+                                MASK old = atomicOr(&visited[word], temp);
+                                if ((old & temp) == 0)
+                                {
+                                    old = atomicOr(&frontierNext[word], temp);
+                                    unsigned sliceIdx = (bit >> 4);
+                                    MASK sliceMask = (static_cast<MASK>(0xFFFF) << (sliceIdx << 4));
+                                    if ((old & sliceMask) == 0)
+                                    {
+                                        unsigned loc = atomicAdd(frontierNextSizePtr, 1);
+                                        sparseFrontierNextIds[loc] = rows.y >> 4;
                                     }
                                 }
                             }
@@ -353,6 +544,10 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     if (sliceSize == 8)
     {
         kernelPtr = (void*)BRSBFSKernels::BRSBFS8Enhanced;
+    }
+    else if (sliceSize == 16)
+    {
+        kernelPtr = (void*)BRSBFSKernels::BRSBFS16Enhanced;
     }
     else
     {
