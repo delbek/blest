@@ -59,7 +59,7 @@ double Benchmark::runBRS(const Matrix& matrix)
 {
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     unsigned sliceSize = 8;
-    unsigned* inversePermutation = nullptr; //csc->gorder(sliceSize);
+    unsigned* inversePermutation = csc->gorder(sliceSize);
 
     BRS* brs = new BRS(sliceSize);
     brs->constructFromCSCMatrix(csc);
