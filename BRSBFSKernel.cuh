@@ -14,7 +14,6 @@ namespace BRSBFSKernels
         ptr1 = temp;
     }
 
-    template <unsigned STAGE_COUNT>
     __global__ void BRSBFS8Enhanced(    const unsigned* const __restrict__ noSliceSetsPtr,
                                         const unsigned* const __restrict__ sliceSetPtrs,
                                         const unsigned* const __restrict__ sliceSetIds,
@@ -46,227 +45,31 @@ namespace BRSBFSKernels
         const unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
         const unsigned noSliceSets = *noSliceSetsPtr;
 
-        extern __shared__ char shared[]; // size: sizeof(uint4) * STAGE_COUNT * blockDim.x + sizeof(MASK) * STAGE_COUNT * blockDim.x
-        unsigned short computeStage;
-        unsigned short loadStage;
-        unsigned consumed;
-        unsigned issued;
-        uint4* rowIdsShared = reinterpret_cast<uint4*>(shared);
-        MASK* masksShared = reinterpret_cast<MASK*>(rowIdsShared + STAGE_COUNT * blockDim.x);
-        cuda::pipeline<cuda::thread_scope_thread> pipe = cuda::make_pipeline();
-        unsigned vsetPipeline[STAGE_COUNT];
+        const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
 
         bool cont = true;
         while (cont)
         {
-            computeStage = 0;
-            loadStage = 0;
-            consumed = 0;
-            issued = 0;
-
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
-                auto sharedLoad = [&](const unsigned& vset)
-                {
-                    unsigned tileStart = sliceSetPtrs[vset] >> 2;
-                    unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
-                    unsigned tile = tileStart + laneID;
-                    pipe.producer_acquire();
-                    if (tile < tileEnd)
-                    {
-                        auto srcRows = &reinterpret_cast<const uint4*>(rowIds)[tile];
-                        cuda::memcpy_async(&rowIdsShared[loadStage * blockDim.x + threadIdx.x], srcRows, sizeof(uint4), pipe);
-                        cuda::memcpy_async(&masksShared[loadStage * blockDim.x + threadIdx.x], &masks[tile], sizeof(MASK), pipe);
-                    }
-                    else
-                    {
-                        rowIdsShared[loadStage * blockDim.x + threadIdx.x] = {0, 0, 0, 0};
-                        masksShared[loadStage * blockDim.x + threadIdx.x] = 0;
-                    }
-                    pipe.producer_commit();
-                    vsetPipeline[loadStage] = vset;
-                    loadStage = (loadStage + 1) % STAGE_COUNT;
-                    ++issued;
-                };  
-                auto emptyLoad = [&]()
-                {
-                    pipe.producer_acquire();
-                    pipe.producer_commit();
-                };
-                auto registerLoad = [&](uint4& rows, MASK& mask, unsigned& vset)
-                {
-                    cuda::pipeline_consumer_wait_prior<STAGE_COUNT - 1>(pipe);
-                    rows = rowIdsShared[computeStage * blockDim.x + threadIdx.x];
-                    mask = masksShared[computeStage * blockDim.x + threadIdx.x];
-                    pipe.consumer_release();
-                    vset = vsetPipeline[computeStage];
-                    computeStage = (computeStage + 1) % STAGE_COUNT;
-                    ++consumed;
-                };
-                #pragma unroll STAGE_COUNT
-                for (unsigned i = warpID; i < warpID + STAGE_COUNT * noWarps; i += noWarps)
-                {
-                    if (i < currentFrontierSize)
-                    {
-                        sharedLoad(sparseFrontierIds[i]);
-                    }
-                    else
-                    {
-                        emptyLoad();
-                    }
-                }
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
-                    unsigned vset;
-                    uint4 rows;
-                    MASK mask;
-                    registerLoad(rows, mask, vset);
-                    unsigned next = i + noWarps * STAGE_COUNT;
-                    if (next < currentFrontierSize)
-                    {
-                        sharedLoad(sparseFrontierIds[next]);
-                    }
-                    else
-                    {
-                        emptyLoad();
-                    }
-
+                    unsigned vset = sparseFrontierIds[i];
+                    unsigned tileStart = sliceSetPtrs[vset] >> 2;
+                    unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
                     unsigned rset = sliceSetIds[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
 
-                    MASK fragA = (mask & 0x0000FFFF);
-                    MASK fragB = 0;
-                    if (laneID % 9 == 0 || laneID % 9 == 4)
+                    uint4 rows = {0, 0, 0, 0};
+                    MASK mask = 0;
+                    unsigned tile = tileStart + laneID;
+                    if (tile < tileEnd)
                     {
-                        fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 8);
+                        rows = row4Ids[tile];
+                        mask = masks[tile];
                     }
-                    unsigned fragC[2];
-                    fragC[0] = fragC[1] = 0;
-                    m8n8k128(fragC, fragA, fragB);
-                    
-                    if (fragC[0])
-                    {
-                        unsigned word = rows.x / MASK_BITS;
-                        unsigned bit = rows.x % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            old = atomicOr(&frontierNext[word], temp);
-                            unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
-                            if ((old & sliceMask) == 0)
-                            {
-                                unsigned rss = rows.x >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
-                                unsigned size = end - start;
-                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
-                                for (unsigned vset = start; vset < end; ++vset)
-                                {
-                                    sparseFrontierNextIds[loc++] = vset;
-                                }
-                            }
-                        }
-                    }
-                    if (fragC[1])
-                    {
-                        unsigned word = rows.y / MASK_BITS;
-                        unsigned bit = rows.y % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            old = atomicOr(&frontierNext[word], temp);
-                            unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
-                            if ((old & sliceMask) == 0)
-                            {
-                                unsigned rss = rows.y >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
-                                unsigned size = end - start;
-                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
-                                for (unsigned vset = start; vset < end; ++vset)
-                                {
-                                    sparseFrontierNextIds[loc++] = vset;
-                                }
-                            }
-                        }
-                    }
-
-                    fragA = (mask & 0xFFFF0000);
-                    fragB = 0;
-                    if (laneID % 9 == 0 || laneID % 9 == 4)
-                    {
-                        fragB = (laneID % 9 == 0) ? (origFragB << 16) : (origFragB << 24);
-                    }
-                    fragC[0] = fragC[1] = 0;
-                    m8n8k128(fragC, fragA, fragB);
-
-                    if (fragC[0])
-                    {
-                        unsigned word = rows.z / MASK_BITS;
-                        unsigned bit = rows.z % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            old = atomicOr(&frontierNext[word], temp);
-                            unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
-                            if ((old & sliceMask) == 0)
-                            {
-                                unsigned rss = rows.z >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
-                                unsigned size = end - start;
-                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
-                                for (unsigned vset = start; vset < end; ++vset)
-                                {
-                                    sparseFrontierNextIds[loc++] = vset;
-                                }
-                            }
-                        }
-                    }
-                    if (fragC[1])
-                    {
-                        unsigned word = rows.w / MASK_BITS;
-                        unsigned bit = rows.w % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            old = atomicOr(&frontierNext[word], temp);
-                            unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
-                            if ((old & sliceMask) == 0)
-                            {
-                                unsigned rss = rows.w >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
-                                unsigned size = end - start;
-                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
-                                for (unsigned vset = start; vset < end; ++vset)
-                                {
-                                    sparseFrontierNextIds[loc++] = vset;
-                                }
-                            }
-                        }
-                    }
-                }
-                while (consumed < issued)
-                {
-                    unsigned vset;
-                    uint4 rows;
-                    MASK mask;
-                    registerLoad(rows, mask, vset);
-
-                    unsigned rset = sliceSetIds[vset];
-                    unsigned shift = (rset % 4) << 3;
-                    MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
 
                     MASK fragA = (mask & 0x0000FFFF);
                     MASK fragB = 0;
@@ -587,17 +390,16 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
     const unsigned DIRECTION_THRESHOLD = noSliceSets / 2; // vset- or rset- based?
-    constexpr unsigned STAGE_COUNT = 2;
 
     auto allocateSharedMemory = [](int blockSize) -> size_t
     {
-        return (sizeof(uint4) + sizeof(MASK)) * static_cast<size_t>(blockSize) * static_cast<size_t>(STAGE_COUNT);
+        return 0;
     };
 
     void* kernelPtr = nullptr;
     if (sliceSize == 8)
     {
-        kernelPtr = (void*)BRSBFSKernels::BRSBFS8Enhanced<STAGE_COUNT>;
+        kernelPtr = (void*)BRSBFSKernels::BRSBFS8Enhanced;
     }
     else
     {
