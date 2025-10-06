@@ -173,7 +173,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                         unsigned r = rows[ptrs[idx]];
                         if (r == i)
                         {
-                            individual |= MASK(1) << idx;
+                            individual |= 1 << idx;
                             if ((ptrs[idx] + 1) < colPtrs[j + 1])
                             {
                                 nextRow = std::min(nextRow, rows[ptrs[idx] + 1]);
@@ -284,7 +284,7 @@ BRS::LocalityStatistics BRS::distributeSlices(unsigned sliceSet, std::vector<uns
             {
                 unsigned current = complete * fullWork + mask * WARP_SIZE + thread;
                 vsetRows.emplace_back(tempRowIds[current]);
-                cumulative |= (static_cast<MASK>(tempMasks[current] << (m_SliceSize * cumulativeCounter++)));
+                cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
             }
             vsetMasks.emplace_back(cumulative);
         }
@@ -305,7 +305,7 @@ BRS::LocalityStatistics BRS::distributeSlices(unsigned sliceSet, std::vector<uns
         for (unsigned slice = leftoverStart; slice < tempRowIds.size(); ++slice)
         {
             vsetRows.emplace_back(tempRowIds[slice]);
-            cumulative |= (static_cast<MASK>(tempMasks[slice] << (m_SliceSize * cumulativeCounter++)));
+            cumulative |= (tempMasks[slice] << (m_SliceSize * cumulativeCounter++));
             if (cumulativeCounter == noMasks)
             {
                 vsetMasks.emplace_back(cumulative);

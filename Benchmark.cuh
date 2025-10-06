@@ -37,22 +37,20 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/home/delbek/sutensor/wikipedia-20070206.mtx", "/arf/home/delbek/sutensor/wikipedia-20070206.txt", false, true},
-        {"/arf/home/delbek/sutensor/com-LiveJournal.mtx", "/arf/home/delbek/sutensor/com-LiveJournal.txt", true, true},
-        {"/arf/home/delbek/sutensor/wb-edu.mtx", "/arf/home/delbek/sutensor/wb-edu.txt", false, true},
-        {"/arf/home/delbek/sutensor/eu-2005.mtx", "/arf/home/delbek/sutensor/eu-2005.txt", false, true},
-        {"/arf/home/delbek/sutensor/indochina-2004.mtx", "/arf/home/delbek/sutensor/indochina-2004.txt", false, true},
-        {"/arf/home/delbek/sutensor/GAP-road.mtx", "/arf/home/delbek/sutensor/GAP-road.txt", true, false},
-        {"/arf/home/delbek/sutensor/amazon-2008.mtx", "/arf/home/delbek/sutensor/amazon-2008.txt", false, true},
-        {"/arf/home/delbek/sutensor/uk-2005.mtx", "/arf/home/delbek/sutensor/uk-2005.txt", false, true},
-        {"/arf/home/delbek/sutensor/roadNet-CA.mtx", "/arf/home/delbek/sutensor/roadNet-CA.txt", true, true},
-        {"/arf/home/delbek/sutensor/rgg_n_2_24_s0.mtx", "/arf/home/delbek/sutensor/rgg_n_2_24_s0.txt", true, true},
-        {"/arf/home/delbek/sutensor/GAP-twitter.mtx", "/arf/home/delbek/sutensor/GAP-twitter.txt", false, false}
-        /*
-        {"/arf/home/delbek/sutensor/GAP-web.mtx", "/arf/home/delbek/sutensor/GAP-web.txt", false, false},
-        {"/arf/home/delbek/sutensor/GAP-kron.mtx", "/arf/home/delbek/sutensor/GAP-kron.txt", true, false},
-        {"/arf/home/delbek/sutensor/GAP-urand.mtx", "/arf/home/delbek/sutensor/GAP-urand.txt", true, false}
-        */
+        {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
+        {"/arf/scratch/delbek/com-LiveJournal.mtx", "/arf/scratch/delbek/com-LiveJournal.txt", true, true},
+        {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
+        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
+        {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
+        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
+        {"/arf/scratch/delbek/amazon-2008.mtx", "/arf/scratch/delbek/amazon-2008.txt", false, true},
+        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
+        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
+        {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
+        {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
+        {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
+        {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
+        {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
     };
 
     for (const auto& matrix: matrices)

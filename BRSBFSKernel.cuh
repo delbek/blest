@@ -23,15 +23,238 @@ namespace BRSBFSKernels
                                         const unsigned* const __restrict__ noWordsPtr,
                                         const unsigned* const __restrict__ directionThresholdPtr,
                                         // current
-                                        MASK* __restrict__ frontier,
+                                        unsigned* __restrict__ frontier,
                                         unsigned* __restrict__ sparseFrontierIds,
                                         unsigned* __restrict__ frontierCurrentSizePtr,
                                         // next
-                                        MASK* __restrict__ frontierNext,
+                                        unsigned* __restrict__ frontierNext,
                                         unsigned* __restrict__ sparseFrontierNextIds,
                                         unsigned* __restrict__ frontierNextSizePtr,
                                         //
-                                        MASK* const __restrict__ visited)
+                                        unsigned* const __restrict__ visited)
+    {
+        auto warp = coalesced_threads();
+        auto grid = this_grid();
+        const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned noThreads = gridDim.x * blockDim.x;
+        const unsigned noWarps = noThreads / WARP_SIZE;
+        const unsigned warpID = threadID / WARP_SIZE;
+        const unsigned laneID = threadID % WARP_SIZE;
+
+        const unsigned noWords = *noWordsPtr;
+        const unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
+        const unsigned noSliceSets = *noSliceSetsPtr;
+
+        const uint2* row2Ids = reinterpret_cast<const uint2*>(rowIds);
+
+        bool cont = true;
+        while (cont)
+        {
+            unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
+            {
+                for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
+                {
+                    unsigned vset = sparseFrontierIds[i];
+                    unsigned tileStart = sliceSetPtrs[vset] >> 1;
+                    unsigned tileEnd = sliceSetPtrs[vset + 1] >> 1;
+                    unsigned rset = sliceSetIds[vset];
+                    unsigned shift = (rset % 4) << 3;
+                    MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
+
+                    uint2 rows = {0, 0};
+                    MASK mask = 0;
+                    unsigned tile = tileStart + laneID;
+                    if (tile < tileEnd)
+                    {
+                        rows = row2Ids[tile];
+                        mask = masks[tile];
+                    }
+
+                    MASK fragA = (mask & 0x0000FFFF);
+                    MASK fragB = 0;
+                    if (laneID % 9 == 0 || laneID % 9 == 4)
+                    {
+                        fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 8);
+                    }
+                    unsigned fragC[2];
+                    fragC[0] = fragC[1] = 0;
+                    m8n8k128(fragC, fragA, fragB);
+                    
+                    if (fragC[0])
+                    {
+                        unsigned word = rows.x / UNSIGNED_BITS;
+                        unsigned bit = rows.x % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
+                        if ((old & temp) == 0)
+                        {
+                            old = atomicOr(&frontierNext[word], temp);
+                            unsigned sliceIdx = (bit >> 3);
+                            unsigned sliceMask = (0xFF) << (sliceIdx << 3);
+                            if ((old & sliceMask) == 0)
+                            {
+                                unsigned rss = rows.x >> 3;
+                                unsigned start = sliceSetOffsets[rss];
+                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned size = end - start;
+                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                for (unsigned vset = start; vset < end; ++vset)
+                                {
+                                    sparseFrontierNextIds[loc++] = vset;
+                                }
+                            }
+                        }
+                    }
+                    if (fragC[1])
+                    {
+                        unsigned word = rows.y / UNSIGNED_BITS;
+                        unsigned bit = rows.y % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
+                        if ((old & temp) == 0)
+                        {
+                            old = atomicOr(&frontierNext[word], temp);
+                            unsigned sliceIdx = (bit >> 3);
+                            unsigned sliceMask = (0xFF) << (sliceIdx << 3);
+                            if ((old & sliceMask) == 0)
+                            {
+                                unsigned rss = rows.y >> 3;
+                                unsigned start = sliceSetOffsets[rss];
+                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned size = end - start;
+                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                for (unsigned vset = start; vset < end; ++vset)
+                                {
+                                    sparseFrontierNextIds[loc++] = vset;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else // spmv
+            {
+                for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
+                {
+                    unsigned rset = sliceSetIds[vset];
+                    unsigned shift = (rset % 4) << 3;
+                    MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
+                    if (origFragB)
+                    {
+                        unsigned tileStart = sliceSetPtrs[vset] >> 1;
+                        unsigned tileEnd = sliceSetPtrs[vset + 1] >> 1;
+                        unsigned tile = tileStart + laneID;
+                        uint2 rows = {0, 0};
+                        MASK mask = 0;
+                        if (tile < tileEnd)
+                        {
+                            rows = row2Ids[tile];
+                            mask = masks[tile];
+                        }
+
+                        MASK fragA = (mask & 0x0000FFFF);
+                        MASK fragB = 0;
+                        if (laneID % 9 == 0 || laneID % 9 == 4)
+                        {
+                            fragB = (laneID % 9 == 0) ? (origFragB) : (origFragB << 8);
+                        }
+                        unsigned fragC[2];
+                        fragC[0] = fragC[1] = 0;
+                        m8n8k128(fragC, fragA, fragB);
+                        
+                        if (fragC[0])
+                        {
+                            unsigned word = rows.x / UNSIGNED_BITS;
+                            unsigned bit = rows.x % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                unsigned sliceIdx = (bit >> 3);
+                                unsigned sliceMask = (0xFF) << (sliceIdx << 3);
+                                if ((old & sliceMask) == 0)
+                                {
+                                    unsigned rss = rows.x >> 3;
+                                    unsigned start = sliceSetOffsets[rss];
+                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned size = end - start;
+                                    unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                    for (unsigned vset = start; vset < end; ++vset)
+                                    {
+                                        sparseFrontierNextIds[loc++] = vset;
+                                    }
+                                }
+                            }
+                        }
+                        if (fragC[1])
+                        {
+                            unsigned word = rows.y / UNSIGNED_BITS;
+                            unsigned bit = rows.y % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                old = atomicOr(&frontierNext[word], temp);
+                                unsigned sliceIdx = (bit >> 3);
+                                unsigned sliceMask = (0xFF) << (sliceIdx << 3);
+                                if ((old & sliceMask) == 0)
+                                {
+                                    unsigned rss = rows.y >> 3;
+                                    unsigned start = sliceSetOffsets[rss];
+                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned size = end - start;
+                                    unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                    for (unsigned vset = start; vset < end; ++vset)
+                                    {
+                                        sparseFrontierNextIds[loc++] = vset;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            swap<unsigned>(frontier, frontierNext);
+            swap<unsigned>(sparseFrontierIds, sparseFrontierNextIds);
+            swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
+            grid.sync();
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+            if (cont)
+            {
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+            }
+            grid.sync();
+        }
+    }
+
+    __global__ void BRSBFS8EnhancedNoMasks4(    const unsigned* const __restrict__ noSliceSetsPtr,
+                                                const unsigned* const __restrict__ sliceSetPtrs,
+                                                const unsigned* const __restrict__ sliceSetIds,
+                                                const unsigned* const __restrict__ sliceSetOffsets,
+                                                const unsigned* const __restrict__ rowIds,
+                                                const MASK* const __restrict__ masks,
+                                                const unsigned* const __restrict__ noWordsPtr,
+                                                const unsigned* const __restrict__ directionThresholdPtr,
+                                                // current
+                                                unsigned* __restrict__ frontier,
+                                                unsigned* __restrict__ sparseFrontierIds,
+                                                unsigned* __restrict__ frontierCurrentSizePtr,
+                                                // next
+                                                unsigned* __restrict__ frontierNext,
+                                                unsigned* __restrict__ sparseFrontierNextIds,
+                                                unsigned* __restrict__ frontierNextSizePtr,
+                                                //
+                                                unsigned* const __restrict__ visited)
     {
         auto warp = coalesced_threads();
         auto grid = this_grid();
@@ -83,15 +306,15 @@ namespace BRSBFSKernels
                     
                     if (fragC[0])
                     {
-                        unsigned word = rows.x / MASK_BITS;
-                        unsigned bit = rows.x % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
+                        unsigned word = rows.x / UNSIGNED_BITS;
+                        unsigned bit = rows.x % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                            unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.x >> 3;
@@ -108,15 +331,15 @@ namespace BRSBFSKernels
                     }
                     if (fragC[1])
                     {
-                        unsigned word = rows.y / MASK_BITS;
-                        unsigned bit = rows.y % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
+                        unsigned word = rows.y / UNSIGNED_BITS;
+                        unsigned bit = rows.y % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                            unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.y >> 3;
@@ -143,15 +366,15 @@ namespace BRSBFSKernels
 
                     if (fragC[0])
                     {
-                        unsigned word = rows.z / MASK_BITS;
-                        unsigned bit = rows.z % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
+                        unsigned word = rows.z / UNSIGNED_BITS;
+                        unsigned bit = rows.z % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                            unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.z >> 3;
@@ -168,15 +391,15 @@ namespace BRSBFSKernels
                     }
                     if (fragC[1])
                     {
-                        unsigned word = rows.w / MASK_BITS;
-                        unsigned bit = rows.w % MASK_BITS;
-                        MASK temp = (static_cast<MASK>(1) << bit);
-                        MASK old = atomicOr(&visited[word], temp);
+                        unsigned word = rows.w / UNSIGNED_BITS;
+                        unsigned bit = rows.w % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
-                            MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                            unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.w >> 3;
@@ -209,7 +432,7 @@ namespace BRSBFSKernels
                         MASK mask = 0;
                         if (tile < tileEnd)
                         {
-                            rows = reinterpret_cast<const uint4*>(rowIds)[tile];
+                            rows = row4Ids[tile];
                             mask = masks[tile];
                         }
 
@@ -225,15 +448,15 @@ namespace BRSBFSKernels
                         
                         if (fragC[0])
                         {
-                            unsigned word = rows.x / MASK_BITS;
-                            unsigned bit = rows.x % MASK_BITS;
-                            MASK temp = (static_cast<MASK>(1) << bit);
-                            MASK old = atomicOr(&visited[word], temp);
+                            unsigned word = rows.x / UNSIGNED_BITS;
+                            unsigned bit = rows.x % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
-                                MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.x >> 3;
@@ -250,15 +473,15 @@ namespace BRSBFSKernels
                         }
                         if (fragC[1])
                         {
-                            unsigned word = rows.y / MASK_BITS;
-                            unsigned bit = rows.y % MASK_BITS;
-                            MASK temp = (static_cast<MASK>(1) << bit);
-                            MASK old = atomicOr(&visited[word], temp);
+                            unsigned word = rows.y / UNSIGNED_BITS;
+                            unsigned bit = rows.y % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
-                                MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.y >> 3;
@@ -282,18 +505,18 @@ namespace BRSBFSKernels
                         }
                         fragC[0] = fragC[1] = 0;
                         m8n8k128(fragC, fragA, fragB);
-
+    
                         if (fragC[0])
                         {
-                            unsigned word = rows.z / MASK_BITS;
-                            unsigned bit = rows.z % MASK_BITS;
-                            MASK temp = (static_cast<MASK>(1) << bit);
-                            MASK old = atomicOr(&visited[word], temp);
+                            unsigned word = rows.z / UNSIGNED_BITS;
+                            unsigned bit = rows.z % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
-                                MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.z >> 3;
@@ -310,15 +533,15 @@ namespace BRSBFSKernels
                         }
                         if (fragC[1])
                         {
-                            unsigned word = rows.w / MASK_BITS;
-                            unsigned bit = rows.w % MASK_BITS;
-                            MASK temp = (static_cast<MASK>(1) << bit);
-                            MASK old = atomicOr(&visited[word], temp);
+                            unsigned word = rows.w / UNSIGNED_BITS;
+                            unsigned bit = rows.w % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
-                                MASK sliceMask = (static_cast<MASK>(0xFF) << (sliceIdx << 3));
+                                unsigned sliceMask = (0xFF) << (sliceIdx << 3);
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.w >> 3;
@@ -338,7 +561,7 @@ namespace BRSBFSKernels
             }
             grid.sync();
             cont = (*frontierNextSizePtr != 0);
-            swap<MASK>(frontier, frontierNext);
+            swap<unsigned>(frontier, frontierNext);
             swap<unsigned>(sparseFrontierIds, sparseFrontierNextIds);
             swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
             grid.sync();
@@ -382,6 +605,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     BRS* brs = dynamic_cast<BRS*>(matrix);
     unsigned n = brs->getN();
     unsigned sliceSize = brs->getSliceSize();
+    unsigned noMasks = MASK_BITS / sliceSize;
     unsigned noRealSliceSets = brs->getNoRealSliceSets();
     unsigned noSliceSets = brs->getNoVirtualSliceSets();
     unsigned* sliceSetPtrs = brs->getSliceSetPtrs();
@@ -397,13 +621,17 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     };
 
     void* kernelPtr = nullptr;
-    if (sliceSize == 8)
+    if (sliceSize == 8 && noMasks == 2)
     {
         kernelPtr = (void*)BRSBFSKernels::BRSBFS8Enhanced;
     }
+    else if (sliceSize == 8 && noMasks == 4)
+    {
+        kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks4;
+    }
     else
     {
-        throw std::runtime_error("No appropriate kernel found meeting the selected slice size.");
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
     }
 
     int gridSize, blockSize;
@@ -423,15 +651,14 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     unsigned* d_NoWords;
     unsigned* d_DIRECTION_THRESHOLD;
-    MASK* d_Frontier;
+    unsigned* d_Frontier;
     unsigned* d_SparseFrontierIds;
     unsigned* d_FrontierCurrentSize;
-    MASK* d_FrontierNext;
+    unsigned* d_FrontierNext;
     unsigned* d_SparseFrontierNextIds;
     unsigned* d_FrontierNextSize;
-    MASK* d_Visited;
+    unsigned* d_Visited;
 
-    unsigned noMasks = MASK_BITS / sliceSize;
     // data structure
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1)))
@@ -451,18 +678,18 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned noWords = (n + MASK_BITS - 1) / MASK_BITS;
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_DIRECTION_THRESHOLD, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_Frontier, sizeof(MASK) * noWords))
+    gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(MASK) * noWords))
+    gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_Visited, sizeof(MASK) * noWords))
+    gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
 
-    gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(MASK) * noWords))
-    gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(MASK) * noWords))
+    gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
-    gpuErrchk(cudaMemset(d_Visited, 0, sizeof(MASK) * noWords))
+    gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
 
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_DIRECTION_THRESHOLD, &DIRECTION_THRESHOLD, sizeof(unsigned), cudaMemcpyHostToDevice))
@@ -474,11 +701,11 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned initialFrontierSize = initialVset.size();
     gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
-    unsigned word = sourceVertex / (MASK_BITS);
-    unsigned bit = sourceVertex % (MASK_BITS);
-    MASK temp = (static_cast<MASK>(1) << bit);
-    gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(MASK), cudaMemcpyHostToDevice))
+    unsigned word = sourceVertex / UNSIGNED_BITS;
+    unsigned bit = sourceVertex % UNSIGNED_BITS;
+    unsigned temp = (static_cast<unsigned>(1) << bit);
+    gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
     double start = omp_get_wtime();
     void* kernelArgs[] = {
@@ -508,14 +735,14 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     double end = omp_get_wtime();
 
     unsigned* visited = new unsigned[noWords];
-    gpuErrchk(cudaMemcpy(visited, d_Visited, sizeof(MASK) * noWords, cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaMemcpy(visited, d_Visited, sizeof(unsigned) * noWords, cudaMemcpyDeviceToHost))
     unsigned totalVisited = 0;
     for (unsigned i = 0; i < noWords; ++i)
     {
         totalVisited += __builtin_popcount(visited[i]);
     }
     delete[] visited;
-    //std::cout << "Total traversed number of nodes: " << totalVisited << std::endl;
+    std::cout << "Total traversed number of nodes: " << totalVisited << std::endl;
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
