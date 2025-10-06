@@ -263,7 +263,7 @@ unsigned* CSC::jackard(unsigned sliceSize)
 
 unsigned* CSC::gorder(unsigned sliceSize)
 {
-    unsigned windowSize = sliceSize * 4096;
+    unsigned windowSize = sliceSize * 8192;
 
 	Gorder::Graph g;
 	g.setFilename("gorder");

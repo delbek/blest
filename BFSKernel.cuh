@@ -46,7 +46,7 @@ double BFSKernel::runBFS(std::string sourceVerticesFilename, unsigned nRun, unsi
             {
                 sourceVertex = inversePermutation[sourceVertex];
             }
-            double time = hostCode(sourceVertex);
+            double time = hostCode(sourceVertex - 1);
             if (i >= nIgnore)
             {
                 run += time;

@@ -43,7 +43,16 @@ void Benchmark::main()
         {"/arf/home/delbek/sutensor/eu-2005.mtx", "/arf/home/delbek/sutensor/eu-2005.txt", false, true},
         {"/arf/home/delbek/sutensor/indochina-2004.mtx", "/arf/home/delbek/sutensor/indochina-2004.txt", false, true},
         {"/arf/home/delbek/sutensor/GAP-road.mtx", "/arf/home/delbek/sutensor/GAP-road.txt", true, false},
-        {"/arf/home/delbek/sutensor/amazon-2008.mtx", "/arf/home/delbek/sutensor/amazon-2008.txt", false, true}
+        {"/arf/home/delbek/sutensor/amazon-2008.mtx", "/arf/home/delbek/sutensor/amazon-2008.txt", false, true},
+        {"/arf/home/delbek/sutensor/uk-2005.mtx", "/arf/home/delbek/sutensor/uk-2005.txt", false, true},
+        {"/arf/home/delbek/sutensor/roadNet-CA.mtx", "/arf/home/delbek/sutensor/roadNet-CA.txt", true, true},
+        {"/arf/home/delbek/sutensor/rgg_n_2_24_s0.mtx", "/arf/home/delbek/sutensor/rgg_n_2_24_s0.txt", true, true},
+        {"/arf/home/delbek/sutensor/GAP-twitter.mtx", "/arf/home/delbek/sutensor/GAP-twitter.txt", false, false}
+        /*
+        {"/arf/home/delbek/sutensor/GAP-web.mtx", "/arf/home/delbek/sutensor/GAP-web.txt", false, false},
+        {"/arf/home/delbek/sutensor/GAP-kron.mtx", "/arf/home/delbek/sutensor/GAP-kron.txt", true, false},
+        {"/arf/home/delbek/sutensor/GAP-urand.mtx", "/arf/home/delbek/sutensor/GAP-urand.txt", true, false}
+        */
     };
 
     for (const auto& matrix: matrices)
