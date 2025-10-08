@@ -75,7 +75,7 @@ CSR::CSR(std::string filename, bool undirected, bool binary)
 
     std::cout << "Number of vertices: " << m_N << std::endl;
     std::cout << "Number of edges: " << nnzs.size() << std::endl;
-    std::cout << "Sparsity: " << double(nnzs.size()) / double(m_N * m_N) << std::endl;
+    std::cout << "Sparsity: " << std::fixed << static_cast<double>(nnzs.size()) / (static_cast<double>(m_N) * static_cast<double>(m_N)) << std::endl;
 
     std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
     {

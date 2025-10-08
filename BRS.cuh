@@ -168,26 +168,24 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                         ++ptrs[idx];
                     }
     
-                    if (ptrs[idx] < colPtrs[j + 1]) 
+                    unsigned p = ptrs[idx];
+                    if (p < colPtrs[j + 1]) // have nonzero unprocessed
                     {
-                        unsigned r = rows[ptrs[idx]];
-                        if (r == i)
+                        if (rows[p] == i) // nonzero in the target row
                         {
-                            individual |= 1 << idx;
-                            if ((ptrs[idx] + 1) < colPtrs[j + 1])
-                            {
-                                nextRow = std::min(nextRow, rows[ptrs[idx] + 1]);
-                            }
+                            individual |= (1 << idx);
+                            ++p;
                         }
-                        else
+                        ptrs[idx] = p;
+                        if (p < colPtrs[j + 1]) // next closest nonzero across all columns having nonzero unprocessed
                         {
-                            nextRow = std::min(nextRow, r);
+                            nextRow = std::min(nextRow, rows[p]);
                         }
                     }
                 }
     
                 if (individual != 0)
-                {
+                {            
                     tempRowIds.emplace_back(i);
                     tempMasks.emplace_back(individual);
                 }

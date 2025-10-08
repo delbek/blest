@@ -4,6 +4,16 @@
 #include "BFSKernel.cuh"
 #include "BRS.cuh"
 
+struct SliceSetInformation
+{
+    unsigned noEntered = 0;
+};
+
+struct SliceInformation
+{
+    unsigned noEntered = 0;
+};
+
 namespace BRSBFSKernels
 {
     template<typename T>
@@ -254,7 +264,8 @@ namespace BRSBFSKernels
                                                 unsigned* __restrict__ sparseFrontierNextIds,
                                                 unsigned* __restrict__ frontierNextSizePtr,
                                                 //
-                                                unsigned* const __restrict__ visited)
+                                                unsigned* const __restrict__ visited
+                                            )
     {
         auto warp = coalesced_threads();
         auto grid = this_grid();
@@ -592,6 +603,9 @@ public:
     virtual ~BRSBFSKernel() = default;
 
     virtual double hostCode(unsigned sourceVertex) final;
+    
+private:
+    void processSliceInformation(SliceInformation* d_SliceInformation, SliceSetInformation* d_SliceSetInformation, unsigned noSlices, unsigned noSets);
 };
 
 BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
@@ -703,12 +717,23 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
     unsigned word = sourceVertex / UNSIGNED_BITS;
     unsigned bit = sourceVertex % UNSIGNED_BITS;
-    unsigned temp = (static_cast<unsigned>(1) << bit);
+    unsigned temp = (1 << bit);
     gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
+    // profiling
+    /*
+    SliceInformation* d_SliceInformation;
+    SliceSetInformation* d_SliceSetInformation;
+    gpuErrchk(cudaMalloc(&d_SliceInformation, sizeof(SliceInformation) * sliceSetPtrs[noSliceSets]))
+    gpuErrchk(cudaMemset(d_SliceInformation, 0, sizeof(SliceInformation) * sliceSetPtrs[noSliceSets]))
+    gpuErrchk(cudaMalloc(&d_SliceSetInformation, sizeof(SliceSetInformation) * noSliceSets))
+    gpuErrchk(cudaMemset(d_SliceSetInformation, 0, sizeof(SliceSetInformation) * noSliceSets))
+    */
+
     double start = omp_get_wtime();
-    void* kernelArgs[] = {
+    void* kernelArgs[] = 
+                        {
                             (void*)&d_NoSliceSets,
                             (void*)&d_SliceSetPtrs,
                             (void*)&d_SliceSetIds,
@@ -723,7 +748,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
                             (void*)&d_FrontierNext,
                             (void*)&d_SparseFrontierNextIds,
                             (void*)&d_FrontierNextSize,
-                            (void*)&d_Visited};
+                            (void*)&d_Visited
+                        };
     gpuErrchk(cudaLaunchCooperativeKernel(
                                             kernelPtr,
                                             gridSize,
@@ -742,7 +768,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
         totalVisited += __builtin_popcount(visited[i]);
     }
     delete[] visited;
-    std::cout << "Total traversed number of nodes: " << totalVisited << std::endl;
+    //std::cout << "Total traversed number of nodes: " << totalVisited << std::endl;
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
@@ -760,7 +786,41 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaFree(d_FrontierNextSize))
     gpuErrchk(cudaFree(d_Visited))
 
+    //this->processSliceInformation(d_SliceInformation, d_SliceSetInformation, sliceSetPtrs[noSliceSets], noSliceSets);
+
     return (end - start);
+}
+
+void BRSBFSKernel::processSliceInformation(SliceInformation* d_SliceInformation, SliceSetInformation* d_SliceSetInformation, unsigned noSlices, unsigned noSets)
+{
+    SliceInformation* h_SliceInformation = new SliceInformation[noSlices];
+    SliceSetInformation* h_SliceSetInformation = new SliceSetInformation[noSets];
+    
+    gpuErrchk(cudaMemcpy(h_SliceInformation, d_SliceInformation, sizeof(SliceInformation) * noSlices, cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaMemcpy(h_SliceSetInformation, d_SliceSetInformation, sizeof(SliceSetInformation) * noSets, cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaFree(d_SliceInformation))
+    gpuErrchk(cudaFree(d_SliceSetInformation))
+
+    double sliceAverageEnter = 0;
+    for (unsigned i = 0; i < noSlices; ++i)
+    {
+        const SliceInformation& slice = h_SliceInformation[i];
+        sliceAverageEnter += slice.noEntered;
+    }
+    sliceAverageEnter /= noSlices;
+    std::cout << "Slice Average Enter: " << sliceAverageEnter << std::endl;
+
+    double setAverageEnter = 0;
+    for (unsigned i = 0; i < noSets; ++i)
+    {
+        const SliceSetInformation& sliceSet = h_SliceSetInformation[i];
+        setAverageEnter += sliceSet.noEntered;
+    }
+    setAverageEnter /= noSets;
+    std::cout << "Set Average Enter: " << setAverageEnter << std::endl;
+
+    delete[] h_SliceInformation;
+    delete[] h_SliceSetInformation;
 }
 
 #endif
