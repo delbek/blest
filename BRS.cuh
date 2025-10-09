@@ -13,51 +13,23 @@ class BRS: public BitMatrix
 private:
     struct LocalityStatistics
     {
-        double averageBucketPerMask = 0;
-        double averageBucketPerWarp = 0;
-        unsigned maxBucketPerMask = 0;
-        unsigned maxBucketPerWarp = 0;
-        double averageBucketRangeMask = 0;
-        double averageBucketRangeWarp = 0;
+        double averageBitsPerMask = 0;
+        double averageBitsPerWarp = 0;
+        unsigned maxBitsPerMask = 0;
+        unsigned maxBitsPerWarp = 0;
 
         void operator+=(LocalityStatistics right)
         {
-            averageBucketPerMask += right.averageBucketPerMask;
-            averageBucketPerWarp += right.averageBucketPerWarp;
-            if (right.maxBucketPerMask > maxBucketPerMask)
-            {
-                maxBucketPerMask = right.maxBucketPerMask;
-            }
-            if (right.maxBucketPerWarp > maxBucketPerWarp)
-            {
-                maxBucketPerWarp = right.maxBucketPerWarp;
-            }
-            averageBucketRangeMask += right.averageBucketRangeMask;
-            averageBucketRangeWarp += right.averageBucketRangeWarp;
-        }
-
-        void maxMask(unsigned value)
-        {
-            if (value > maxBucketPerMask)
-            {
-                maxBucketPerMask = value;
-            }
-        }
-
-        void maxWarp(unsigned value)
-        {
-            if (value > maxBucketPerWarp)
-            {
-                maxBucketPerWarp = value;
-            }
+            averageBitsPerMask += right.averageBitsPerMask;
+            averageBitsPerWarp += right.averageBitsPerWarp;
+            maxBitsPerMask = std::max(maxBitsPerMask, right.maxBitsPerMask);
+            maxBitsPerWarp = std::max(maxBitsPerWarp, right.maxBitsPerWarp);
         }
 
         void operator/=(unsigned right)
         {
-            averageBucketPerMask /= right;
-            averageBucketPerWarp /= right;
-            averageBucketRangeMask /= right;
-            averageBucketRangeWarp /= right;
+            averageBitsPerMask /= right;
+            averageBitsPerWarp /= right;
         }
     };
 
@@ -211,12 +183,10 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     m_NoVirtualSliceSets = m_SliceSetOffsets[m_NoRealSliceSets];
 
     stats /= m_NoVirtualSliceSets;
-    std::cout << "Average buckets per mask: " << stats.averageBucketPerMask << std::endl;
-    std::cout << "Average buckets per warp: " << stats.averageBucketPerWarp << std::endl;
-    std::cout << "Max buckets per mask: " << stats.maxBucketPerMask << std::endl;
-    std::cout << "Max buckets per warp: " << stats.maxBucketPerWarp << std::endl;
-    std::cout << "Average bucket range per mask: " << stats.averageBucketRangeMask << std::endl;
-    std::cout << "Average bucket range per warp: " << stats.averageBucketRangeWarp << std::endl;
+    std::cout << "Average bits per mask: " << stats.averageBitsPerMask << std::endl;
+    std::cout << "Average bits per warp: " << stats.averageBitsPerWarp<< std::endl;
+    std::cout << "Max bits per mask: " << stats.maxBitsPerMask << std::endl;
+    std::cout << "Max bits per warp: " << stats.maxBitsPerWarp<< std::endl;
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
     m_SliceSetIds = new unsigned[m_NoVirtualSliceSets]; // virtual to real
@@ -298,6 +268,28 @@ BRS::LocalityStatistics BRS::distributeSlices(unsigned sliceSet, std::vector<uns
         std::vector<unsigned> vsetRows;
         std::vector<MASK> vsetMasks;
     
+        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+        {
+            MASK cumulative = 0;
+            unsigned cumulativeCounter = 0;
+            for (unsigned mask = 0; mask < noMasks; ++mask)
+            {
+                unsigned current = leftoverStart + mask * WARP_SIZE + thread;
+                if (current < tempRowIds.size())
+                {
+                    vsetRows.emplace_back(tempRowIds[current]);
+                    cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
+                }
+                else
+                {
+                    vsetRows.emplace_back(UNSIGNED_MAX);
+                    ++cumulativeCounter;
+                }
+            }
+            vsetMasks.emplace_back(cumulative);
+        }
+
+        /*
         MASK cumulative = 0;
         unsigned cumulativeCounter = 0;
         for (unsigned slice = leftoverStart; slice < tempRowIds.size(); ++slice)
@@ -315,13 +307,13 @@ BRS::LocalityStatistics BRS::distributeSlices(unsigned sliceSet, std::vector<uns
         {
             for (; cumulativeCounter < noMasks; ++cumulativeCounter)
             {
-                vsetRows.emplace_back(0);
+                vsetRows.emplace_back(UNSIGNED_MAX);
             }
             vsetMasks.emplace_back(cumulative);
-        
         }
+        */
+
         stats += this->computeWarpStatistics(vsetRows);
-        
         rowIds.emplace_back(vsetRows);
         masks.emplace_back(vsetMasks);
     }
@@ -342,51 +334,26 @@ BRS::LocalityStatistics BRS::computeWarpStatistics(std::vector<unsigned>& warp)
     unsigned noMasks = MASK_BITS / m_SliceSize;
     LocalityStatistics stats;
 
-    std::unordered_map<unsigned, unsigned> warpBuckets;
-    unsigned minWarp = UNSIGNED_MAX;
-    unsigned maxWarp = 0;
     for (unsigned mask = 0; mask < noMasks; ++mask)
     {
-        std::unordered_map<unsigned, unsigned> maskBuckets;
-        unsigned minMask = UNSIGNED_MAX;
-        unsigned maxMask = 0;
-        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+        unsigned bits = 0;
+        unsigned prev = warp[mask];
+        for (unsigned thread = 1; thread < WARP_SIZE; ++thread)
         {
-            unsigned current = thread * noMasks + mask;
-            if (current >= warp.size()) continue;
-            unsigned bucket = warp[current] / MASK_BITS;
-            if (maskBuckets.find(bucket) != maskBuckets.end())
-            {
-                ++maskBuckets[bucket];
-            }
-            else
-            {
-                maskBuckets[bucket] = 1;
-            }
-            if (warpBuckets.find(bucket) != warpBuckets.end())
-            {
-                ++warpBuckets[bucket];
-            }
-            else
-            {
-                warpBuckets[bucket] = 1;
-            }
-            if (bucket < minMask) minMask = bucket;
-            if (bucket > maxMask) maxMask = bucket;
-            if (bucket < minWarp) minWarp = bucket;
-            if (bucket > maxWarp) maxWarp = bucket;
+            unsigned index = thread * noMasks + mask;
+            if (index >= warp.size()) continue;
+            unsigned current = warp[index];
+            if (current == UNSIGNED_MAX) continue;
+            assert(current > prev);
+            unsigned diff = current - prev;
+            unsigned numberOfBits = std::log2(diff);
+            bits = std::max(bits, numberOfBits);
+            prev = current;
         }
-        
-        stats.averageBucketPerMask += maskBuckets.size();
-        stats.maxMask(maskBuckets.size());
-        stats.averageBucketRangeMask += (maxMask - minMask);
+        stats.averageBitsPerMask += bits;
+        stats.maxBitsPerMask = std::max(bits, stats.maxBitsPerMask);
     }
-    stats.averageBucketPerMask /= noMasks;
-    stats.averageBucketRangeMask /= noMasks;
-    
-    stats.averageBucketPerWarp = warpBuckets.size();
-    stats.maxWarp(warpBuckets.size());
-    stats.averageBucketRangeWarp = (maxWarp - minWarp);
+    stats.averageBitsPerMask /= noMasks;
 
     return stats;
 }

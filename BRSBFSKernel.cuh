@@ -66,20 +66,13 @@ namespace BRSBFSKernels
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
                     unsigned vset = sparseFrontierIds[i];
-                    unsigned tileStart = sliceSetPtrs[vset] >> 1;
-                    unsigned tileEnd = sliceSetPtrs[vset + 1] >> 1;
                     unsigned rset = sliceSetIds[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
 
-                    uint2 rows = {0, 0};
-                    MASK mask = 0;
-                    unsigned tile = tileStart + laneID;
-                    if (tile < tileEnd)
-                    {
-                        rows = row2Ids[tile];
-                        mask = masks[tile];
-                    }
+                    unsigned tile = (vset << 5) + laneID;
+                    uint2 rows = row2Ids[tile];
+                    MASK mask = masks[tile];
 
                     MASK fragA = (mask & 0x0000FFFF);
                     MASK fragB = 0;
@@ -152,17 +145,10 @@ namespace BRSBFSKernels
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
                     if (origFragB)
                     {
-                        unsigned tileStart = sliceSetPtrs[vset] >> 1;
-                        unsigned tileEnd = sliceSetPtrs[vset + 1] >> 1;
-                        unsigned tile = tileStart + laneID;
-                        uint2 rows = {0, 0};
-                        MASK mask = 0;
-                        if (tile < tileEnd)
-                        {
-                            rows = row2Ids[tile];
-                            mask = masks[tile];
-                        }
-
+                        unsigned tile = (vset << 5) + laneID;
+                        uint2 rows = row2Ids[tile];
+                        MASK mask = masks[tile];
+                        
                         MASK fragA = (mask & 0x0000FFFF);
                         MASK fragB = 0;
                         if (laneID % 9 == 0 || laneID % 9 == 4)
@@ -290,20 +276,13 @@ namespace BRSBFSKernels
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
                     unsigned vset = sparseFrontierIds[i];
-                    unsigned tileStart = sliceSetPtrs[vset] >> 2;
-                    unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
                     unsigned rset = sliceSetIds[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
 
-                    uint4 rows = {0, 0, 0, 0};
-                    MASK mask = 0;
-                    unsigned tile = tileStart + laneID;
-                    if (tile < tileEnd)
-                    {
-                        rows = row4Ids[tile];
-                        mask = masks[tile];
-                    }
+                    unsigned tile = (vset << 5) + laneID;
+                    uint4 rows = row4Ids[tile];
+                    MASK mask = masks[tile];
 
                     MASK fragA = (mask & 0x0000FFFF);
                     MASK fragB = 0;
@@ -436,16 +415,9 @@ namespace BRSBFSKernels
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
                     if (origFragB)
                     {
-                        unsigned tileStart = sliceSetPtrs[vset] >> 2;
-                        unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
-                        unsigned tile = tileStart + laneID;
-                        uint4 rows = {0, 0, 0, 0};
-                        MASK mask = 0;
-                        if (tile < tileEnd)
-                        {
-                            rows = row4Ids[tile];
-                            mask = masks[tile];
-                        }
+                        unsigned tile = (vset << 5) + laneID;
+                        uint4 rows = row4Ids[tile];
+                        MASK mask = masks[tile];
 
                         MASK fragA = (mask & 0x0000FFFF);
                         MASK fragB = 0;
@@ -689,7 +661,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks), cudaMemcpyHostToDevice))
 
     // algorithm
-    unsigned noWords = (n + MASK_BITS - 1) / MASK_BITS;
+    unsigned noWords = (n + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_DIRECTION_THRESHOLD, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))

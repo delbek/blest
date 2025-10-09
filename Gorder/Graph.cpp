@@ -109,8 +109,6 @@ void Graph::readGraph(unsigned n, unsigned nnz, unsigned* colPtrs, unsigned* row
 	}
 #endif
 
-	cout << "vsize: " << vsize << endl;
-	cout << "edgenum: " << edgenum << endl;
 	graph[vsize].outstart=edgenum;
 	graph[vsize].instart=edgenum;
 }
