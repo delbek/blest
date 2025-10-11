@@ -26,8 +26,8 @@ namespace BRSBFSKernels
 
     __global__ void BRSBFS8Enhanced(    const unsigned* const __restrict__ noSliceSetsPtr,
                                         const unsigned* const __restrict__ sliceSetPtrs,
-                                        const unsigned* const __restrict__ sliceSetIds,
-                                        const unsigned* const __restrict__ sliceSetOffsets,
+                                        const unsigned* const __restrict__ virtualToReal,
+                                        const unsigned* const __restrict__ realPtrs,
                                         const unsigned* const __restrict__ rowIds,
                                         const MASK* const __restrict__ masks,
                                         const unsigned* const __restrict__ noWordsPtr,
@@ -66,7 +66,7 @@ namespace BRSBFSKernels
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
                     unsigned vset = sparseFrontierIds[i];
-                    unsigned rset = sliceSetIds[vset];
+                    unsigned rset = virtualToReal[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
 
@@ -98,8 +98,8 @@ namespace BRSBFSKernels
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.x >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
                                 unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                 for (unsigned vset = start; vset < end; ++vset)
@@ -123,8 +123,8 @@ namespace BRSBFSKernels
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.y >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
                                 unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                 for (unsigned vset = start; vset < end; ++vset)
@@ -140,7 +140,7 @@ namespace BRSBFSKernels
             {
                 for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
                 {
-                    unsigned rset = sliceSetIds[vset];
+                    unsigned rset = virtualToReal[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
                     if (origFragB)
@@ -173,8 +173,8 @@ namespace BRSBFSKernels
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.x >> 3;
-                                    unsigned start = sliceSetOffsets[rss];
-                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
                                     unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                     for (unsigned vset = start; vset < end; ++vset)
@@ -198,8 +198,8 @@ namespace BRSBFSKernels
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.y >> 3;
-                                    unsigned start = sliceSetOffsets[rss];
-                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
                                     unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                     for (unsigned vset = start; vset < end; ++vset)
@@ -235,8 +235,8 @@ namespace BRSBFSKernels
 
     __global__ void BRSBFS8EnhancedNoMasks4(    const unsigned* const __restrict__ noSliceSetsPtr,
                                                 const unsigned* const __restrict__ sliceSetPtrs,
-                                                const unsigned* const __restrict__ sliceSetIds,
-                                                const unsigned* const __restrict__ sliceSetOffsets,
+                                                const unsigned* const __restrict__ virtualToReal,
+                                                const unsigned* const __restrict__ realPtrs,
                                                 const unsigned* const __restrict__ rowIds,
                                                 const MASK* const __restrict__ masks,
                                                 const unsigned* const __restrict__ noWordsPtr,
@@ -276,7 +276,7 @@ namespace BRSBFSKernels
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
                     unsigned vset = sparseFrontierIds[i];
-                    unsigned rset = sliceSetIds[vset];
+                    unsigned rset = virtualToReal[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
 
@@ -308,8 +308,8 @@ namespace BRSBFSKernels
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.x >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
                                 unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                 for (unsigned vset = start; vset < end; ++vset)
@@ -333,8 +333,8 @@ namespace BRSBFSKernels
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.y >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
                                 unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                 for (unsigned vset = start; vset < end; ++vset)
@@ -368,8 +368,8 @@ namespace BRSBFSKernels
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.z >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
                                 unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                 for (unsigned vset = start; vset < end; ++vset)
@@ -393,8 +393,8 @@ namespace BRSBFSKernels
                             if ((old & sliceMask) == 0)
                             {
                                 unsigned rss = rows.w >> 3;
-                                unsigned start = sliceSetOffsets[rss];
-                                unsigned end = sliceSetOffsets[rss + 1];
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
                                 unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                 for (unsigned vset = start; vset < end; ++vset)
@@ -410,7 +410,7 @@ namespace BRSBFSKernels
             {
                 for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
                 {
-                    unsigned rset = sliceSetIds[vset];
+                    unsigned rset = virtualToReal[vset];
                     unsigned shift = (rset % 4) << 3;
                     MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
                     if (origFragB)
@@ -443,8 +443,8 @@ namespace BRSBFSKernels
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.x >> 3;
-                                    unsigned start = sliceSetOffsets[rss];
-                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
                                     unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                     for (unsigned vset = start; vset < end; ++vset)
@@ -468,8 +468,8 @@ namespace BRSBFSKernels
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.y >> 3;
-                                    unsigned start = sliceSetOffsets[rss];
-                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
                                     unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                     for (unsigned vset = start; vset < end; ++vset)
@@ -503,8 +503,8 @@ namespace BRSBFSKernels
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.z >> 3;
-                                    unsigned start = sliceSetOffsets[rss];
-                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
                                     unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                     for (unsigned vset = start; vset < end; ++vset)
@@ -528,8 +528,8 @@ namespace BRSBFSKernels
                                 if ((old & sliceMask) == 0)
                                 {
                                     unsigned rss = rows.w >> 3;
-                                    unsigned start = sliceSetOffsets[rss];
-                                    unsigned end = sliceSetOffsets[rss + 1];
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
                                     unsigned loc = atomicAdd(frontierNextSizePtr, size);
                                     for (unsigned vset = start; vset < end; ++vset)
@@ -595,8 +595,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned noRealSliceSets = brs->getNoRealSliceSets();
     unsigned noSliceSets = brs->getNoVirtualSliceSets();
     unsigned* sliceSetPtrs = brs->getSliceSetPtrs();
-    unsigned* sliceSetIds = brs->getSliceSetIds();
-    unsigned* sliceSetOffsets = brs->getSliceSetOffsets();
+    unsigned* virtualToReal = brs->getVirtualToReal();
+    unsigned* realPtrs = brs->getRealPtrs();
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
     const unsigned DIRECTION_THRESHOLD = noSliceSets / 2; // vset- or rset- based?
@@ -630,8 +630,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     unsigned* d_NoSliceSets;
     unsigned* d_SliceSetPtrs;
-    unsigned* d_SliceSetIds;
-    unsigned* d_SliceSetOffsets;
+    unsigned* d_VirtualToReal;
+    unsigned* d_RealPtrs;
     unsigned* d_RowIds;
     MASK* d_Masks;
 
@@ -648,15 +648,15 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     // data structure
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1)))
-    gpuErrchk(cudaMalloc(&d_SliceSetIds, sizeof(unsigned) * noSliceSets))
-    gpuErrchk(cudaMalloc(&d_SliceSetOffsets, sizeof(unsigned) * (noRealSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
     gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets]))
     gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks)))
 
     gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_SliceSetIds, sliceSetIds, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_SliceSetOffsets, sliceSetOffsets, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * sliceSetPtrs[noSliceSets], cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (sliceSetPtrs[noSliceSets] / noMasks), cudaMemcpyHostToDevice))
 
@@ -680,7 +680,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_DIRECTION_THRESHOLD, &DIRECTION_THRESHOLD, sizeof(unsigned), cudaMemcpyHostToDevice))
     std::vector<unsigned> initialVset;
-    for (unsigned vset = sliceSetOffsets[sourceVertex / sliceSize]; vset < sliceSetOffsets[sourceVertex / sliceSize + 1]; ++vset)
+    for (unsigned vset = realPtrs[sourceVertex / sliceSize]; vset < realPtrs[sourceVertex / sliceSize + 1]; ++vset)
     {
         initialVset.emplace_back(vset);
     }
@@ -708,8 +708,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
                         {
                             (void*)&d_NoSliceSets,
                             (void*)&d_SliceSetPtrs,
-                            (void*)&d_SliceSetIds,
-                            (void*)&d_SliceSetOffsets,
+                            (void*)&d_VirtualToReal,
+                            (void*)&d_RealPtrs,
                             (void*)&d_RowIds,
                             (void*)&d_Masks,
                             (void*)&d_NoWords,
@@ -744,8 +744,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
-    gpuErrchk(cudaFree(d_SliceSetIds))
-    gpuErrchk(cudaFree(d_SliceSetOffsets))
+    gpuErrchk(cudaFree(d_VirtualToReal))
+    gpuErrchk(cudaFree(d_RealPtrs))
     gpuErrchk(cudaFree(d_RowIds))
     gpuErrchk(cudaFree(d_Masks))
     gpuErrchk(cudaFree(d_NoWords))

@@ -49,8 +49,8 @@ public:
     [[nodiscard]] inline unsigned getNoRealSliceSets() {return m_NoRealSliceSets;}
     [[nodiscard]] inline unsigned getNoVirtualSliceSets() {return m_NoVirtualSliceSets;}
     [[nodiscard]] inline unsigned* getSliceSetPtrs() {return m_SliceSetPtrs;}
-    [[nodiscard]] inline unsigned* getSliceSetIds() {return m_SliceSetIds;}
-    [[nodiscard]] inline unsigned* getSliceSetOffsets() {return m_SliceSetOffsets;}
+    [[nodiscard]] inline unsigned* getVirtualToReal() {return m_VirtualToReal;}
+    [[nodiscard]] inline unsigned* getRealPtrs() {return m_RealPtrs;}
     [[nodiscard]] inline unsigned* getRowIds() {return m_RowIds;}
     [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
 
@@ -66,8 +66,8 @@ private:
     unsigned m_NoVirtualSliceSets;
 
     unsigned* m_SliceSetPtrs;
-    unsigned* m_SliceSetIds;
-    unsigned* m_SliceSetOffsets;
+    unsigned* m_VirtualToReal;
+    unsigned* m_RealPtrs;
     unsigned* m_RowIds;
     MASK* m_Masks;
 };
@@ -82,8 +82,8 @@ BRS::BRS(unsigned sliceSize)
 BRS::~BRS()
 {
     delete[] m_SliceSetPtrs;
-    delete[] m_SliceSetIds;
-    delete[] m_SliceSetOffsets;
+    delete[] m_VirtualToReal;
+    delete[] m_RealPtrs;
     delete[] m_RowIds;
     delete[] m_Masks;
 }
@@ -174,13 +174,13 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
     }
 
-    m_SliceSetOffsets = new unsigned[m_NoRealSliceSets + 1]; // real to virtual range
-    m_SliceSetOffsets[0] = 0;
+    m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
+    m_RealPtrs[0] = 0;
     for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
     {
-        m_SliceSetOffsets[realSliceSet + 1] = m_SliceSetOffsets[realSliceSet] + rowIds[realSliceSet].size();
+        m_RealPtrs[realSliceSet + 1] = m_RealPtrs[realSliceSet] + rowIds[realSliceSet].size();
     }
-    m_NoVirtualSliceSets = m_SliceSetOffsets[m_NoRealSliceSets];
+    m_NoVirtualSliceSets = m_RealPtrs[m_NoRealSliceSets];
 
     stats /= m_NoVirtualSliceSets;
     std::cout << "Average bits per mask: " << stats.averageBitsPerMask << std::endl;
@@ -189,17 +189,17 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     std::cout << "Max bits per warp: " << stats.maxBitsPerWarp<< std::endl;
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
-    m_SliceSetIds = new unsigned[m_NoVirtualSliceSets]; // virtual to real
+    m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
     
     m_SliceSetPtrs[0] = 0;
+    unsigned vset = 0;
     for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
     {
-        unsigned start = m_SliceSetOffsets[realSliceSet];
         for (unsigned i = 0; i < rowIds[realSliceSet].size(); ++i)
         {
-            unsigned virtualSliceSet = start + i;
-            m_SliceSetPtrs[virtualSliceSet + 1] = m_SliceSetPtrs[virtualSliceSet] + rowIds[realSliceSet][i].size();
-            m_SliceSetIds[virtualSliceSet] = realSliceSet;
+            m_SliceSetPtrs[vset + 1] = m_SliceSetPtrs[vset] + rowIds[realSliceSet][i].size();
+            m_VirtualToReal[vset] = realSliceSet;
+            ++vset;
         }
     }
     
@@ -338,13 +338,13 @@ BRS::LocalityStatistics BRS::computeWarpStatistics(std::vector<unsigned>& warp)
     {
         unsigned bits = 0;
         unsigned prev = warp[mask];
-        for (unsigned thread = 1; thread < WARP_SIZE; ++thread)
+        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
         {
             unsigned index = thread * noMasks + mask;
             if (index >= warp.size()) continue;
             unsigned current = warp[index];
             if (current == UNSIGNED_MAX) continue;
-            assert(current > prev);
+            assert(current >= prev);
             unsigned diff = current - prev;
             unsigned numberOfBits = std::log2(diff);
             bits = std::max(bits, numberOfBits);
