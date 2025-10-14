@@ -25,11 +25,7 @@ public:
         std::vector<unsigned> rows;
         std::vector<MASK> masks;
     };
-    struct PatternAnalysis
-    {
-        unsigned totalCount = 0;
-    };
-
+    
 public:
     BRS(unsigned sliceSize, unsigned isFullPadding, std::ofstream& file);
     BRS(const BRS& other) = delete;
@@ -385,7 +381,7 @@ void BRS::brsAnalysis()
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
 
-    std::vector<PatternAnalysis> patterns(1 << m_SliceSize);
+    std::vector<unsigned> patterns(1 << m_SliceSize, 0);
     std::vector<unsigned> counts(m_SliceSize + 1, 0);
     for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
     {
@@ -397,7 +393,7 @@ void BRS::brsAnalysis()
                 unsigned shift = (slice % noMasks) * 8;
                 MASK pattern = ((current >> shift) & 0x000000FF);
                 ++counts[__builtin_popcount(pattern)];
-                ++patterns[pattern].totalCount;
+                ++patterns[pattern];
             }
         }
     }
@@ -413,7 +409,7 @@ void BRS::brsAnalysis()
     m_File << std::endl;
     for (unsigned i = 0; i < (1 << m_SliceSize); ++i)
     {
-        fileFlush(m_File, patterns[i].totalCount);
+        fileFlush(m_File, patterns[i]);
         //std::cout << "Pattern: " << i << ' ' << patterns[i].totalCount << " - No Bits: " << __builtin_popcount(i) << std::endl;
     }
     m_File << std::endl;

@@ -442,9 +442,10 @@ HBRS::LocalityStatistics HBRS::computeWarpLocalityStatistics(std::vector<Encodin
                 {
                     any = true;
                     unsigned word = rows[i] / MASK_BITS;
-                    if (freq.contains(word))
+                    auto freqIt = freq.find(word);
+                    if (freqIt != freq.end())
                     {
-                        ++freq[word];
+                        ++freqIt->second;
                     }
                     else
                     {

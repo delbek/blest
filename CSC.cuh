@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <iostream>
 #include <random>
+#include <unordered_map>
 
 // Gorder
 #include "Graph.h"
@@ -16,8 +17,18 @@
 class CSC
 {
 public:
+	struct Level1Data
+	{
+		std::vector<unsigned> parents;
+	};
+	struct Level2Data
+	{
+		std::vector<unsigned> parents;
+		unsigned child = UNSIGNED_MAX;
+	};
+
 	CSC() = default;
-	CSC(std::string filename, bool undirected, bool binary);
+	CSC(std::string filename, bool undirected, bool binary, bool degreeReduction);
 	CSC(const CSC& other) = delete;
 	CSC(CSC&& other) noexcept = delete;
 	CSC& operator=(const CSC& other) = delete;
@@ -28,6 +39,10 @@ public:
 	[[nodiscard]] inline unsigned& getNNZ() {return m_NNZ;}
 	[[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
 	[[nodiscard]] inline unsigned*& getRows() {return m_Rows;}
+
+	const std::vector<int>& getMapping() const {return m_Mapping;}
+	std::unordered_map<unsigned, Level1Data>& getLevel1Hash() {return m_Level1Hash;}
+	std::unordered_map<unsigned, Level2Data>& getLevel2Hash() {return m_Level2Hash;}
 
 	// metrics
 	unsigned maxBandwidth();
@@ -48,17 +63,19 @@ public:
 	unsigned findPseudoPeripheralNode(CSC* csc, unsigned startNode);
 	unsigned* rcm();
 	//
-
 	void applyPermutation(unsigned* inversePermutation);
 
 private:
+	std::vector<int> m_Mapping;
+	std::unordered_map<unsigned, Level1Data> m_Level1Hash;
+	std::unordered_map<unsigned, Level2Data> m_Level2Hash;
 	unsigned m_N;
 	unsigned m_NNZ;
 	unsigned* m_ColPtrs;
 	unsigned* m_Rows;
 };
 
-CSC::CSC(std::string filename, bool undirected, bool binary)
+CSC::CSC(std::string filename, bool undirected, bool binary, bool degreeReduction)
 {
 	std::ifstream file(filename);
 	if (!file.is_open())
@@ -101,33 +118,159 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	std::cout << "Number of edges: " << nnzs.size() << std::endl;
 	std::cout << "Sparsity: " << std::fixed << static_cast<double>(nnzs.size()) / (static_cast<double>(m_N) * static_cast<double>(m_N)) << std::endl;
 
-	std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
+	if (degreeReduction)
 	{
-		if (a.second == b.second)
+		// nnz: (j, i) i -> j
+		std::vector<unsigned> outdegrees(m_N, 0);
+		for (const auto& nnz: nnzs)
 		{
-			return a.first < b.first;
+			++outdegrees[nnz.second];
 		}
-		else
+
+		std::vector<int> mark(m_N, 0);
+		for (unsigned v = 0; v < m_N; ++v)
 		{
-			return a.second < b.second;
+			if (outdegrees[v] == 0)
+			{
+				mark[v] = -1;
+				m_Level1Hash.emplace(v, Level1Data{});
+			}
+			else if (outdegrees[v] == 1)
+			{
+				mark[v] = -1;
+				m_Level2Hash.emplace(v, Level2Data{});
+			}
 		}
-	});
 
-	m_NNZ = nnzs.size();
-	m_ColPtrs = new unsigned[m_N + 1];
-	m_Rows = new unsigned[m_NNZ];
+		for (const auto& nnz: nnzs)
+		{
+			unsigned dest = nnz.first;
+			unsigned src = nnz.second;
 
-	std::fill(m_ColPtrs, m_ColPtrs + m_N + 1, 0);
+			/*
+			Graph:
+			parents -> a -> b -> c
+			*/
 
-	for (unsigned iter = 0; iter < m_NNZ; ++iter)
-	{
-		++m_ColPtrs[nnzs[iter].second + 1];
-		m_Rows[iter] = nnzs[iter].first;
+			// if dest has no outdegree
+			auto level1It = m_Level1Hash.find(dest);
+			if (level1It != m_Level1Hash.end())
+			{
+				level1It->second.parents.emplace_back(src); // set src as the parent of dest
+			}
+			// c is dest - b is src | level 1 parent mark
+
+			// if dest has one outdegree
+			auto level2ParentIt = m_Level2Hash.find(dest);
+			if (level2ParentIt != m_Level2Hash.end())
+			{
+				level2ParentIt->second.parents.emplace_back(src); // set src as the parent of dest
+			}
+			// a/b are dest - parents/a are src | level 2 parent mark
+
+			// now we resolved parents for each cases, but left childs behind
+
+			// if src has one outdegree
+			auto level2ChildIt = m_Level2Hash.find(src); // do note that this src was, in one of the previous iterations, dest that passed the if check above
+			if (level2ChildIt != m_Level2Hash.end())
+			{
+				level2ChildIt->second.child = dest; // set dest as the child of src
+			}
+			// a/b are now src (prev dest) - b/c dest | level 2 child mark
+		}
+
+		std::vector<std::pair<unsigned, unsigned>> reducedNNZs;
+		reducedNNZs.reserve(nnzs.size());
+		for (const auto& nnz: nnzs)
+		{
+			unsigned dest = nnz.first;
+			unsigned src = nnz.second;
+			if (mark[dest] == -1 || mark[src] == -1)
+			{
+				continue;
+			}
+			reducedNNZs.emplace_back(nnz);
+		}
+
+		m_Mapping.assign(m_N, -1);
+		unsigned idx = 0;
+		for (unsigned v = 0; v < m_N; ++v)
+		{
+			if (mark[v] == -1) continue;
+			m_Mapping[v] = static_cast<int>(idx++);
+		}
+		unsigned newN = idx;
+
+		for (auto& nnz: reducedNNZs)
+		{
+			nnz.first = m_Mapping[nnz.first];
+			nnz.second = m_Mapping[nnz.second];
+		}
+
+		std::sort(reducedNNZs.begin(), reducedNNZs.end(), [](const auto& a, const auto& b) 
+		{
+			if (a.second == b.second)
+			{
+				return a.first < b.first;
+			}
+			else
+			{
+				return a.second < b.second;
+			}
+		});
+
+		m_N = newN;
+		m_NNZ = reducedNNZs.size();
+		std::cout << "Reduced N: " << m_N << std::endl;
+		std::cout << "Reduced NNZ: " << m_NNZ << std::endl;
+
+		m_ColPtrs = new unsigned[m_N + 1];
+		std::fill(m_ColPtrs, m_ColPtrs + m_N + 1, 0);
+		m_Rows = new unsigned[m_NNZ];
+		for (unsigned iter = 0; iter < m_NNZ; ++iter)
+		{
+			++m_ColPtrs[reducedNNZs[iter].second + 1];
+			m_Rows[iter] = reducedNNZs[iter].first;
+		}
+
+		for (unsigned j = 0; j < m_N; ++j)
+		{
+			m_ColPtrs[j + 1] += m_ColPtrs[j];
+		}
 	}
-
-	for (unsigned j = 0; j < m_N; ++j)
+	else
 	{
-		m_ColPtrs[j + 1] += m_ColPtrs[j];
+		m_Mapping.resize(m_N);
+		for (unsigned i = 0; i < m_N; ++i) m_Mapping[i] = i;
+		
+		std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
+		{
+			if (a.second == b.second)
+			{
+				return a.first < b.first;
+			}
+			else
+			{
+				return a.second < b.second;
+			}
+		});
+
+		m_NNZ = nnzs.size();
+		m_ColPtrs = new unsigned[m_N + 1];
+		m_Rows = new unsigned[m_NNZ];
+
+		std::fill(m_ColPtrs, m_ColPtrs + m_N + 1, 0);
+
+		for (unsigned iter = 0; iter < m_NNZ; ++iter)
+		{
+			++m_ColPtrs[nnzs[iter].second + 1];
+			m_Rows[iter] = nnzs[iter].first;
+		}
+
+		for (unsigned j = 0; j < m_N; ++j)
+		{
+			m_ColPtrs[j + 1] += m_ColPtrs[j];
+		}
 	}
 }
 

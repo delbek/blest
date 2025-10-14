@@ -7,7 +7,6 @@
 #include <cooperative_groups.h>
 #include <limits>
 #include <fstream>
-#include <cuda/pipeline>
 using namespace cooperative_groups;
 
 #define M 8

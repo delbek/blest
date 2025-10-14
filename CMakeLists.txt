@@ -16,7 +16,8 @@ endif()
 # CUDA
 find_package(CUDAToolkit REQUIRED)
 if(CUDAToolkit_FOUND)
-		set(CMAKE_CUDA_ARCHITECTURES 80)
+    # Set CUDA architectures to cover a wide range of GPUs
+    set(CMAKE_CUDA_ARCHITECTURES 80 90)
     enable_language(CUDA)
 endif()
 
