@@ -6,6 +6,7 @@
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
 #include <limits>
+#include <fstream>
 #include <cuda/pipeline>
 using namespace cooperative_groups;
 
@@ -37,6 +38,24 @@ __device__ __forceinline__ void m8n8k128(unsigned* const __restrict__ fragC, con
         " { %4, %5 };"
         : "+r"(fragC[0]), "+r"(fragC[1])
         : "r"(fragA), "r"(fragB), "r"(fragC[0]), "r"(fragC[1]));
+}
+
+template <class T>
+void fileFlush(std::ofstream& file, T el)
+{
+    file << "'" << el << '\t';
+}
+
+unsigned* chainPermutations(unsigned n, unsigned* perm1, unsigned* perm2)
+{
+    unsigned* chained = new unsigned[n];
+    for (unsigned i = 0; i < n; ++i)
+    {
+        chained[i] = perm2[perm1[i]];
+    }
+    delete[] perm1;
+    delete[] perm2;
+    return chained;
 }
 
 #endif

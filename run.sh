@@ -4,9 +4,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --partition=kolyoz-cuda
+#SBATCH --partition=palamut-cuda
 #SBATCH --gres=gpu:1
-#SBATCH --time=0-12:00:00
+#SBATCH --time=0-1:00:00
 #SBATCH --output=/arf/home/delbek/sutensor/res/out-%j.out
 #SBATCH --error=/arf/home/delbek/sutensor/res/out-%j.err
 #SBATCH --export=NONE
@@ -37,6 +37,12 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+module load comp/nvhpc/nvhpc-25.3
+if [ $? -ne 0 ]; then
+  echo "Failed to load comp/nvhpc/nvhpc-25.3"
+  exit 1
+fi
+
 export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-16}
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-16}
 
@@ -47,5 +53,6 @@ make
 cd ..
 
 srun ./build/sutensor
+#srun ncu --config-file off --export /arf/home/delbek/profiler_reports/profile%i.ncu-rep --force-overwrite --section ComputeWorkloadAnalysis --section InstructionStats --section MemoryWorkloadAnalysis --section MemoryWorkloadAnalysis_Chart --section MemoryWorkloadAnalysis_Tables --section Occupancy --section PmSampling --section PmSampling_WarpStates --section SchedulerStats --section SourceCounters --section SpeedOfLight --section SpeedOfLight_HierarchicalDoubleRooflineChart --section SpeedOfLight_HierarchicalHalfRooflineChart --section SpeedOfLight_HierarchicalSingleRooflineChart --section SpeedOfLight_HierarchicalTensorRooflineChart --section SpeedOfLight_RooflineChart --section WarpStateStats --section WorkloadDistribution --import-source yes --source-folder /arf/home/delbek/sutensor/ /arf/home/delbek/sutensor/build/sutensor
 #valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --track-origins=yes --leak-resolution=high --num-callers=25 ./build/sutensor
 #srun compute-sanitizer --tool memcheck ./build/sutensor

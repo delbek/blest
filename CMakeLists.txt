@@ -16,7 +16,7 @@ endif()
 # CUDA
 find_package(CUDAToolkit REQUIRED)
 if(CUDAToolkit_FOUND)
-		set(CMAKE_CUDA_ARCHITECTURES 90)
+		set(CMAKE_CUDA_ARCHITECTURES 80)
     enable_language(CUDA)
 endif()
 

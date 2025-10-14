@@ -36,22 +36,20 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
-        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
         {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
+        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
-        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true}
-        /*
+        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
         {"/arf/scratch/delbek/com-LiveJournal.mtx", "/arf/scratch/delbek/com-LiveJournal.txt", true, true},
         {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/amazon-2008.mtx", "/arf/scratch/delbek/amazon-2008.txt", false, true},
-        {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
+        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
         {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
+        {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
         {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
         {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
-        */
     };
 
     for (const auto& matrix: matrices)
@@ -67,14 +65,35 @@ double Benchmark::runBRS(const Matrix& matrix)
 {
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     unsigned sliceSize = 8;
-    unsigned* inversePermutation = nullptr; //csc->gorder(sliceSize);
+    bool fullPadding = false;
+    
+    std::cout << "Average Bandwidth before ordering: " << csc->averageBandwidth() << std::endl;
+    std::cout << "Max Bandwidth before ordering: " << csc->maxBandwidth() << std::endl;
+    std::cout << "Average Profile before ordering: " << csc->averageProfile() << std::endl;
+    std::cout << "Max Profile before ordering: " << csc->maxProfile() << std::endl;
+    unsigned* inversePermutation = nullptr;
+    if (csc->checkSymmetry())
+    {
+        inversePermutation = csc->rcm();
+    }
+    else
+    {
+        inversePermutation = csc->gorderWithJackard(sliceSize);
+    }
+    std::cout << "------" << std::endl;
+    std::cout << "Average Bandwidth after ordering: " << csc->averageBandwidth() << std::endl;
+    std::cout << "Max Bandwidth after ordering: " << csc->maxBandwidth() << std::endl;
+    std::cout << "Average Profile after ordering: " << csc->averageProfile() << std::endl;
+    std::cout << "Max Profile after ordering: " << csc->maxProfile() << std::endl;
 
-    BRS* brs = new BRS(sliceSize);
+    std::ofstream file(matrix.filename + ".csv");
+    BRS* brs = new BRS(sliceSize, fullPadding, file);
     brs->constructFromCSCMatrix(csc);
 
     BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    double time = kernel.runBFS(matrix.sourceFile, 15, 5, inversePermutation);
+    double time = kernel.runBFS(matrix.sourceFile, 1, 0, inversePermutation);
 
+    file.close();
     delete csc;
     delete brs;
     if (inversePermutation != nullptr)
