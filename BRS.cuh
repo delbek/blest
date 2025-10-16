@@ -24,6 +24,7 @@ public:
     {
         std::vector<unsigned> rows;
         std::vector<MASK> masks;
+        std::vector<unsigned> rsets;
     };
     
 public:
@@ -53,7 +54,8 @@ public:
     [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
 
 private:
-    void distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
+    void distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
+    void formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset);
 
 private:
     unsigned m_N;
@@ -80,7 +82,7 @@ BRS::BRS(unsigned sliceSize, unsigned isFullPadding, std::ofstream& file)
   m_IsFullPadding(isFullPadding),
   m_File(file)
 {
-    m_File << "N\tNNZ\tMASK_BITS\tSliceSize\t#RSet\t#VSet\t#Slices\tnoMasks\tAvg(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tPadded/All\tBits" << std::endl;
+    m_File << "N\tNNZ\tMASK_BITS\tSliceSize\t#RSet\t#VSet\t#Slices\tnoMasks\tAvg(Slice/VSet)\tMin(Slice/VSet)\tMax(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tPadded/All\tBits" << std::endl;
 }
 
 BRS::~BRS()
@@ -99,7 +101,10 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     unsigned* rows = csc->getRows();
     fileFlush(m_File, m_N); fileFlush(m_File, colPtrs[m_N]);
 
+    unsigned superSetSize = 4;
+
     m_NoRealSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
+    for (; m_NoRealSliceSets % superSetSize != 0; ++m_NoRealSliceSets);
     m_NoVirtualSliceSets = 0;
 
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)
@@ -108,115 +113,127 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
 
-    std::vector<std::vector<VSet>> realSliceSets(m_NoRealSliceSets);
+    assert(m_NoRealSliceSets % superSetSize == 0);
 
+    std::vector<VSet> vsets;
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
+        std::vector<VSet> mySets;
         #pragma omp for
-        for (unsigned sliceSet = 0; sliceSet < m_NoRealSliceSets; ++sliceSet)
+        for (unsigned rsetTile = 0; rsetTile < m_NoRealSliceSets; rsetTile += superSetSize)
         {
-            unsigned sliceSetColStart = sliceSet * m_SliceSize;
-            unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
-            
-            std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
-            for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
+            VSet vset;
+            vset.rows.resize(128);
+            vset.rows.assign(128, 0);
+            vset.masks.resize(32);
+            vset.masks.assign(32, 0);
+            for (unsigned rset = rsetTile; rset < rsetTile + superSetSize; ++rset)
             {
-                ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
-            }
-    
-            std::vector<unsigned> tempRowIds;
-            std::vector<MASK> tempMasks;
-    
-            unsigned i = 0;
-            while (i < m_N) 
-            {
-                MASK individual = 0;
-                unsigned nextRow = m_N;
-    
-                for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j) 
+                vset.rsets.emplace_back(rset);
+                unsigned sliceSetColStart = rset * m_SliceSize;
+                unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
+                
+                std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
+                for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
                 {
-                    unsigned idx = j - sliceSetColStart;
-                    while (ptrs[idx] < colPtrs[j + 1] && rows[ptrs[idx]] < i)
-                    {
-                        ++ptrs[idx];
-                    }
-    
-                    unsigned p = ptrs[idx];
-                    if (p < colPtrs[j + 1]) // have nonzero unprocessed
-                    {
-                        if (rows[p] == i) // nonzero in the target row
-                        {
-                            individual |= (1 << idx);
-                            ++p;
-                        }
-                        ptrs[idx] = p;
-                        if (p < colPtrs[j + 1]) // next closest nonzero across all columns having nonzero unprocessed
-                        {
-                            nextRow = std::min(nextRow, rows[p]);
-                        }
-                    }
+                    ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
                 }
-    
-                if (individual != 0)
-                {            
-                    tempRowIds.emplace_back(i);
-                    tempMasks.emplace_back(individual);
+        
+                std::vector<unsigned> tempRowIds;
+                std::vector<MASK> tempMasks;
+        
+                unsigned i = 0;
+                while (i < m_N) 
+                {
+                    MASK individual = 0;
+                    unsigned nextRow = m_N;
+        
+                    for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j) 
+                    {
+                        unsigned idx = j - sliceSetColStart;
+                        while (ptrs[idx] < colPtrs[j + 1] && rows[ptrs[idx]] < i)
+                        {
+                            ++ptrs[idx];
+                        }
+        
+                        unsigned p = ptrs[idx];
+                        if (p < colPtrs[j + 1]) // have nonzero unprocessed
+                        {
+                            if (rows[p] == i) // nonzero in the target row
+                            {
+                                individual |= (1 << idx);
+                                ++p;
+                            }
+                            ptrs[idx] = p;
+                            if (p < colPtrs[j + 1]) // next closest nonzero across all columns having nonzero unprocessed
+                            {
+                                nextRow = std::min(nextRow, rows[p]);
+                            }
+                        }
+                    }
+        
+                    if (individual != 0)
+                    {            
+                        tempRowIds.emplace_back(i);
+                        tempMasks.emplace_back(individual);
+                    }
+        
+                    i = nextRow;
                 }
-    
-                i = nextRow;
+        
+                this->formSuperVSet4(rset % superSetSize, tempRowIds, tempMasks, vset);
             }
-    
-            this->distributeSlices(sliceSet, tempRowIds, tempMasks, realSliceSets[sliceSet]);
+            mySets.emplace_back(vset);
+        }
+        #pragma omp critical
+        {
+            for (unsigned i = 0; i < mySets.size(); ++i)
+            {
+                vsets.emplace_back(mySets[i]);
+            }
         }
     }
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
-    m_RealPtrs[0] = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    std::fill(m_RealPtrs, m_RealPtrs + m_NoRealSliceSets + 1, 0);
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        m_RealPtrs[realSliceSet + 1] = m_RealPtrs[realSliceSet] + realSliceSets[realSliceSet].size();
+        for (unsigned i = 0; i < vsets[vset].rsets.size(); ++i)
+        {
+            unsigned rset = vsets[vset].rsets[i];
+            m_RealPtrs[rset] = vset;
+        }
     }
-    m_NoVirtualSliceSets = m_RealPtrs[m_NoRealSliceSets];
+    m_NoVirtualSliceSets = vsets.size();
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
     m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
     
     m_SliceSetPtrs[0] = 0;
-    unsigned vset = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned i = 0; i < realSliceSets[realSliceSet].size(); ++i)
-        {
-            m_SliceSetPtrs[vset + 1] = m_SliceSetPtrs[vset] + realSliceSets[realSliceSet][i].rows.size();
-            m_VirtualToReal[vset] = realSliceSet;
-            ++vset;
-        }
+        m_SliceSetPtrs[vset + 1] = m_SliceSetPtrs[vset] + vsets[vset].rows.size();
+        m_VirtualToReal[vset] = vsets[vset].rsets.front();
     }
     m_NoSlices = m_SliceSetPtrs[m_NoVirtualSliceSets];
 
     m_RowIds = new unsigned[m_NoSlices];
     unsigned idx = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned virtualSliceSet = 0; virtualSliceSet < realSliceSets[realSliceSet].size(); ++virtualSliceSet)
+        for (unsigned i = 0; i < vsets[vset].rows.size(); ++i)
         {
-            for (unsigned i = 0; i < realSliceSets[realSliceSet][virtualSliceSet].rows.size(); ++i)
-            {
-                m_RowIds[idx++] = realSliceSets[realSliceSet][virtualSliceSet].rows[i];
-            }
+            m_RowIds[idx++] = vsets[vset].rows[i];
         }
     }
 
     m_Masks = new MASK[(m_NoSlices / noMasks)];
     idx = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned virtualSliceSet = 0; virtualSliceSet < realSliceSets[realSliceSet].size(); ++virtualSliceSet)
+        for (unsigned i = 0; i < vsets[vset].masks.size(); ++i)
         {
-            for (unsigned i = 0; i < realSliceSets[realSliceSet][virtualSliceSet].masks.size(); ++i)
-            {
-                m_Masks[idx++] = realSliceSets[realSliceSet][virtualSliceSet].masks[i];
-            }
+            m_Masks[idx++] = vsets[vset].masks[i];
         }
     }
 
@@ -224,7 +241,40 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     this->brsAnalysis();
 }
 
-void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
+void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset)
+{
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+    unsigned regionThreadSize = WARP_SIZE / 4;
+
+    for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+    {
+        unsigned region = (thread % 4);
+        if (region != targetRegion)
+        {
+            continue;
+        }
+        unsigned regionThreadId = thread / 4;
+        MASK cumulative = 0;
+        unsigned cumulativeCounter = 0;
+        for (unsigned mask = 0; mask < noMasks; ++mask)
+        {
+            unsigned current = mask * regionThreadSize + regionThreadId;
+            if (current < tempRowIds.size())
+            {
+                vset.rows[thread * noMasks + mask] = tempRowIds[current];
+                cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
+            }
+            else
+            {
+                vset.rows[thread * noMasks + mask] = 0;
+                ++cumulativeCounter;
+            }
+        }
+        vset.masks[thread] = cumulative;
+    }
+}
+
+void BRS::distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned fullWork = WARP_SIZE * noMasks;
@@ -269,7 +319,7 @@ void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds,
                     }
                     else
                     {
-                        set.rows.emplace_back(UNSIGNED_MAX);
+                        set.rows.emplace_back(0);
                         ++cumulativeCounter;
                     }
                 }
@@ -295,7 +345,7 @@ void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds,
             {
                 for (; cumulativeCounter < noMasks; ++cumulativeCounter)
                 {
-                    set.rows.emplace_back(UNSIGNED_MAX);
+                    set.rows.emplace_back(0);
                 }
                 set.masks.emplace_back(cumulative);
             }
@@ -317,12 +367,19 @@ void BRS::printBRSData()
     std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 
     double average = 0;
+    unsigned min = UNSIGNED_MAX;
+    unsigned max = 0;
     for (unsigned ss = 0; ss < m_NoVirtualSliceSets; ++ss)
     {
-        average += (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
+        unsigned slices = m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss];
+        average += slices;
+        min = std::min(min, slices);
+        max = std::max(max, slices);
     }
     average /= m_NoVirtualSliceSets;
     std::cout << "Average number of slices in each set " << average << std::endl;
+    std::cout << "Min number of slices in any set " << min << std::endl;
+    std::cout << "Max number of slices in any set " << max << std::endl;
 
     double variance = 0;
     for (unsigned ss = 0; ss < m_NoVirtualSliceSets; ++ss)
@@ -373,7 +430,7 @@ void BRS::printBRSData()
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
     fileFlush(m_File, MASK_BITS); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices); fileFlush(m_File, noMasks);
-    fileFlush(m_File, average); fileFlush(m_File, standardDeviation); fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, (static_cast<double>(m_NoPaddedSlices) / m_NoSlices)); fileFlush(m_File, (m_NoSlices * m_SliceSize));
+    fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation); fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, (static_cast<double>(m_NoPaddedSlices) / m_NoSlices)); fileFlush(m_File, (m_NoSlices * m_SliceSize));
     m_File << std::endl;
 }
 
