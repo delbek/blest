@@ -6,6 +6,7 @@
 #include <cooperative_groups.h>
 #include <limits>
 #include <fstream>
+#include <type_traits>
 using namespace cooperative_groups;
 
 #define M 8
@@ -36,6 +37,13 @@ __device__ __forceinline__ void m8n8k128(unsigned* const __restrict__ fragC, con
         " { %4, %5 };"
         : "+r"(fragC[0]), "+r"(fragC[1])
         : "r"(fragA), "r"(fragB), "r"(fragC[0]), "r"(fragC[1]));
+}
+
+template <class T>
+__device__ __forceinline__ void storeNotCached(T* ptr, const T& val)
+{
+    static_assert(sizeof(T) == 4);
+    asm volatile("st.global.wt.b32 [%0], %1;" :: "l"(ptr), "r"(val) : "memory");
 }
 
 template <class T>

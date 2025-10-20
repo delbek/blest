@@ -1062,7 +1062,7 @@ namespace BRSBFSKernels
             {
                 for (unsigned i = threadID; i < noWords; i += noThreads)
                 {
-                    frontierNext[i] = 0;
+                    storeNotCached<unsigned>(&frontierNext[i], 0);
                 }
             }
             grid.sync();
@@ -1339,7 +1339,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* realPtrs = brs->getRealPtrs();
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
-    const unsigned DIRECTION_THRESHOLD = noSliceSets / 4; // vset- or rset- based?
+    const unsigned DIRECTION_THRESHOLD = noSliceSets / 2; // vset- or rset- based?
 
     BFSResult result;
     result.levels = new unsigned[n];

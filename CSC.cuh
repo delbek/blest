@@ -340,7 +340,7 @@ unsigned* CSC::gorder(unsigned windowSize)
 
 unsigned* CSC::gorderWithJackard(unsigned sliceSize)
 {
-	unsigned windowSize = sliceSize * 8192;
+	unsigned windowSize = sliceSize * 33168;
 
 	Gorder::Graph g;
 	g.setFilename("gorder");
