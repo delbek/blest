@@ -1,5 +1,4 @@
-#ifndef BRS_CUH
-#define BRS_CUH
+#pragma once
 
 #include "BitMatrix.cuh"
 #include "CSC.cuh"
@@ -13,7 +12,8 @@ class BRS: public BitMatrix
 {
 public:
     struct SliceSetInformation
-    {
+    {   
+        unsigned noActive = 0;
         unsigned noEntered = 0;
     };
     struct SliceInformation
@@ -24,8 +24,9 @@ public:
     {
         std::vector<unsigned> rows;
         std::vector<MASK> masks;
+        std::vector<unsigned> rsets;
     };
-    
+
 public:
     BRS(unsigned sliceSize, unsigned isFullPadding, std::ofstream& file);
     BRS(const BRS& other) = delete;
@@ -53,7 +54,8 @@ public:
     [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
 
 private:
-    void distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
+    void distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
+    void formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset);
 
 private:
     unsigned m_N;
@@ -80,7 +82,7 @@ BRS::BRS(unsigned sliceSize, unsigned isFullPadding, std::ofstream& file)
   m_IsFullPadding(isFullPadding),
   m_File(file)
 {
-    m_File << "N\tNNZ\tMASK_BITS\tSliceSize\t#RSet\t#VSet\t#Slices\tnoMasks\tAvg(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tPadded/All\tBits" << std::endl;
+    m_File << "N\tNNZ\tMASK_BITS\tSliceSize\t#RSet\t#VSet\t#Slices\tnoMasks\tAvg(Slice/VSet)\tMin(Slice/VSet)\tMax(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tPadded/All\tBits" << std::endl;
 }
 
 BRS::~BRS()
@@ -99,7 +101,10 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     unsigned* rows = csc->getRows();
     fileFlush(m_File, m_N); fileFlush(m_File, colPtrs[m_N]);
 
+    unsigned superSetSize = 4;
+
     m_NoRealSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
+    for (; m_NoRealSliceSets % superSetSize != 0; ++m_NoRealSliceSets);
     m_NoVirtualSliceSets = 0;
 
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)
@@ -108,14 +113,15 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
 
-    std::vector<std::vector<VSet>> realSliceSets(m_NoRealSliceSets);
+    assert(m_NoRealSliceSets % superSetSize == 0);
 
+    std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
         #pragma omp for
-        for (unsigned sliceSet = 0; sliceSet < m_NoRealSliceSets; ++sliceSet)
+        for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
         {
-            unsigned sliceSetColStart = sliceSet * m_SliceSize;
+            unsigned sliceSetColStart = rset * m_SliceSize;
             unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
             
             std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
@@ -166,57 +172,60 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 i = nextRow;
             }
     
-            this->distributeSlices(sliceSet, tempRowIds, tempMasks, realSliceSets[sliceSet]);
+            this->distributeSlices(rset, tempRowIds, tempMasks, rsets[rset]);
         }
     }
+    std::vector<VSet> vsets;
+    for (unsigned i = 0; i < rsets.size(); ++i)
+    {
+        for (auto& vset: rsets[i])
+        {
+            vsets.emplace_back(std::move(vset));
+        }
+    }
+    rsets.clear();
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
-    m_RealPtrs[0] = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    std::fill(m_RealPtrs, m_RealPtrs + m_NoRealSliceSets + 1, 0);
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        m_RealPtrs[realSliceSet + 1] = m_RealPtrs[realSliceSet] + realSliceSets[realSliceSet].size();
+        unsigned rset = vsets[vset].rsets.front();
+        ++m_RealPtrs[rset + 1];
     }
-    m_NoVirtualSliceSets = m_RealPtrs[m_NoRealSliceSets];
+    for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
+    {
+        m_RealPtrs[rset + 1] += m_RealPtrs[rset];
+    }
+    m_NoVirtualSliceSets = vsets.size();
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
     m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
     
     m_SliceSetPtrs[0] = 0;
-    unsigned vset = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned i = 0; i < realSliceSets[realSliceSet].size(); ++i)
-        {
-            m_SliceSetPtrs[vset + 1] = m_SliceSetPtrs[vset] + realSliceSets[realSliceSet][i].rows.size();
-            m_VirtualToReal[vset] = realSliceSet;
-            ++vset;
-        }
+        m_SliceSetPtrs[vset + 1] = m_SliceSetPtrs[vset] + vsets[vset].rows.size();
+        m_VirtualToReal[vset] = vsets[vset].rsets.front();
     }
     m_NoSlices = m_SliceSetPtrs[m_NoVirtualSliceSets];
 
     m_RowIds = new unsigned[m_NoSlices];
     unsigned idx = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned virtualSliceSet = 0; virtualSliceSet < realSliceSets[realSliceSet].size(); ++virtualSliceSet)
+        for (unsigned i = 0; i < vsets[vset].rows.size(); ++i)
         {
-            for (unsigned i = 0; i < realSliceSets[realSliceSet][virtualSliceSet].rows.size(); ++i)
-            {
-                m_RowIds[idx++] = realSliceSets[realSliceSet][virtualSliceSet].rows[i];
-            }
+            m_RowIds[idx++] = vsets[vset].rows[i];
         }
     }
 
     m_Masks = new MASK[(m_NoSlices / noMasks)];
     idx = 0;
-    for (unsigned realSliceSet = 0; realSliceSet < m_NoRealSliceSets; ++realSliceSet)
+    for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned virtualSliceSet = 0; virtualSliceSet < realSliceSets[realSliceSet].size(); ++virtualSliceSet)
+        for (unsigned i = 0; i < vsets[vset].masks.size(); ++i)
         {
-            for (unsigned i = 0; i < realSliceSets[realSliceSet][virtualSliceSet].masks.size(); ++i)
-            {
-                m_Masks[idx++] = realSliceSets[realSliceSet][virtualSliceSet].masks[i];
-            }
+            m_Masks[idx++] = vsets[vset].masks[i];
         }
     }
 
@@ -224,7 +233,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     this->brsAnalysis();
 }
 
-void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
+void BRS::distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned fullWork = WARP_SIZE * noMasks;
@@ -233,6 +242,7 @@ void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds,
     for (unsigned complete = 0; complete < noComplete; ++complete)
     {
         VSet set;
+        set.rsets.emplace_back(rset);
         for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
         {
             MASK cumulative = 0;
@@ -252,6 +262,7 @@ void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds,
     if (leftoverStart < tempRowIds.size())
     {
         VSet set;
+        set.rsets.emplace_back(rset);
 
         if (m_IsFullPadding)
         {
@@ -269,7 +280,7 @@ void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds,
                     }
                     else
                     {
-                        set.rows.emplace_back(UNSIGNED_MAX);
+                        set.rows.emplace_back(0);
                         ++cumulativeCounter;
                     }
                 }
@@ -295,13 +306,46 @@ void BRS::distributeSlices(unsigned sliceSet, std::vector<unsigned>& tempRowIds,
             {
                 for (; cumulativeCounter < noMasks; ++cumulativeCounter)
                 {
-                    set.rows.emplace_back(UNSIGNED_MAX);
+                    set.rows.emplace_back(0);
                 }
                 set.masks.emplace_back(cumulative);
             }
         }
 
         vsets.emplace_back(set);
+    }
+}
+
+void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset)
+{
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+    unsigned regionThreadSize = WARP_SIZE / 4;
+
+    for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+    {
+        unsigned region = (thread % 4);
+        if (region != targetRegion)
+        {
+            continue;
+        }
+        unsigned regionThreadId = thread / 4;
+        MASK cumulative = 0;
+        unsigned cumulativeCounter = 0;
+        for (unsigned mask = 0; mask < noMasks; ++mask)
+        {
+            unsigned current = mask * regionThreadSize + regionThreadId;
+            if (current < tempRowIds.size())
+            {
+                vset.rows[thread * noMasks + mask] = tempRowIds[current];
+                cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
+            }
+            else
+            {
+                vset.rows[thread * noMasks + mask] = 0;
+                ++cumulativeCounter;
+            }
+        }
+        vset.masks[thread] = cumulative;
     }
 }
 
@@ -317,9 +361,14 @@ void BRS::printBRSData()
     std::cout << "Number of slices in each mask: " << noMasks << std::endl;
 
     double average = 0;
+    unsigned min = UNSIGNED_MAX;
+    unsigned max = 0;
     for (unsigned ss = 0; ss < m_NoVirtualSliceSets; ++ss)
     {
-        average += (m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss]);
+        unsigned slices = m_SliceSetPtrs[ss + 1] - m_SliceSetPtrs[ss];
+        average += slices;
+        min = std::min(min, slices);
+        max = std::max(max, slices);
     }
     average /= m_NoVirtualSliceSets;
     std::cout << "Average number of slices in each set " << average << std::endl;
@@ -334,6 +383,9 @@ void BRS::printBRSData()
     variance /= m_NoVirtualSliceSets;
     double standardDeviation = std::sqrt(variance);
     std::cout << "Standard deviation of the number of slices in each set: " << standardDeviation << std::endl;
+
+    std::cout << "Min number of slices in any set " << min << std::endl;
+    std::cout << "Max number of slices in any set " << max << std::endl;
 
     unsigned padded = 0;
     unsigned totalNumberOfEdgesCheck = 0;
@@ -373,7 +425,7 @@ void BRS::printBRSData()
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
     fileFlush(m_File, MASK_BITS); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices); fileFlush(m_File, noMasks);
-    fileFlush(m_File, average); fileFlush(m_File, standardDeviation); fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, (static_cast<double>(m_NoPaddedSlices) / m_NoSlices)); fileFlush(m_File, (m_NoSlices * m_SliceSize));
+    fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation); fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, (static_cast<double>(m_NoPaddedSlices) / m_NoSlices)); fileFlush(m_File, (m_NoSlices * m_SliceSize));
     m_File << std::endl;
 }
 
@@ -439,12 +491,15 @@ void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVi
     }
     averageRSet /= m_NoRealSliceSets;
     
+    double averageVSetActive = 0;
     double averageVSet = 0;
     for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         SliceSetInformation set = vsetInformation[vset];
+        averageVSetActive += set.noActive;
         averageVSet += set.noEntered;
     }
+    averageVSetActive /= m_NoVirtualSliceSets;
     averageVSet /= m_NoVirtualSliceSets;
 
     double averageSlice = 0;
@@ -462,5 +517,3 @@ void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVi
     fileFlush(m_File, source); fileFlush(m_File, totalLevels); fileFlush(m_File, totalVisited); fileFlush(m_File, time * 1000); fileFlush(m_File, averageRSet); fileFlush(m_File, averageVSet); fileFlush(m_File, averageSlice);
     m_File << std::endl;
 }
-
-#endif

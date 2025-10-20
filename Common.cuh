@@ -1,5 +1,4 @@
-#ifndef COMMON_CUH
-#define COMMON_CUH
+#pragma once
 
 #include <iostream>
 #include "omp.h"
@@ -11,7 +10,7 @@ using namespace cooperative_groups;
 
 #define M 8
 #define K 128
-#define MASK unsigned
+#define MASK unsigned short
 constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 constexpr unsigned UNSIGNED_BITS = sizeof(unsigned) * 8;
 #define WARP_SIZE 32
@@ -56,5 +55,3 @@ unsigned* chainPermutations(unsigned n, unsigned* perm1, unsigned* perm2)
     delete[] perm2;
     return chained;
 }
-
-#endif

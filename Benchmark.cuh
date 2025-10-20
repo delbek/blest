@@ -30,10 +30,10 @@ public:
     void main();
     double runBRS(const Matrix& matrix);
     double runHBRS(const Matrix& matrix);
-    std::vector<unsigned> constructSourceVertices(std::string filename, const std::vector<int>& mapping, const std::unordered_map<unsigned, CSC::Level2Data>& level2Hash, unsigned* inversePermutation);
+    std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
 };
 
-std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, const std::vector<int>& mapping, const std::unordered_map<unsigned, CSC::Level2Data>& level2Hash, unsigned* inversePermutation)
+std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
 {
     std::ifstream file(filename);
     if (!file.is_open())
@@ -47,19 +47,7 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, c
     while (file >> sourceVertex)
     {
         --sourceVertex;
-
-        auto level2It = level2Hash.find(sourceVertex);
-        // follow chain of degree 1 vertices
-        while (level2It != level2Hash.end())
-        {
-            sourceVertex = level2It->second.child;
-            level2It = level2Hash.find(sourceVertex);
-        }
-
-        int newMapping = mapping[sourceVertex];
-        if (newMapping == -1) continue;
-        sources.emplace_back(inversePermutation[newMapping]);   
-        // we need to traverse each of the parent vertices after completing bfs, setting the children level to minimum level any parent has (+1).
+        sources.emplace_back(inversePermutation[sourceVertex]);   
     }
     file.close();
 
@@ -70,20 +58,22 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
-        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
+        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true}
+        /*
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
         {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
+        {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
+        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
+        {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
         {"/arf/scratch/delbek/com-LiveJournal.mtx", "/arf/scratch/delbek/com-LiveJournal.txt", true, true},
-        {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/amazon-2008.mtx", "/arf/scratch/delbek/amazon-2008.txt", false, true},
-        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
         {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
         {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
         {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
         {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
+        */
     };
 
     for (const auto& matrix: matrices)
@@ -97,34 +87,19 @@ void Benchmark::main()
 
 double Benchmark::runBRS(const Matrix& matrix)
 {
-    bool degreeOneReduction = true;
     unsigned sliceSize = 8;
-    bool fullPadding = false;
-    
-    CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary, degreeOneReduction);
-    
-    std::cout << "Average Bandwidth before ordering: " << csc->averageBandwidth() << std::endl;
-    std::cout << "Max Bandwidth before ordering: " << csc->maxBandwidth() << std::endl;
-    std::cout << "Average Profile before ordering: " << csc->averageProfile() << std::endl;
-    std::cout << "Max Profile before ordering: " << csc->maxProfile() << std::endl;
+    bool fullPadding = true;
+
+    CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
+
     unsigned* inversePermutation = nullptr;
-    if (csc->checkSymmetry())
-    {
-        inversePermutation = csc->rcm();
-    }
-    else
-    {
-        inversePermutation = csc->gorderWithJackard(sliceSize);
-    }
-    std::cout << "------" << std::endl;
-    std::cout << "Average Bandwidth after ordering: " << csc->averageBandwidth() << std::endl;
-    std::cout << "Max Bandwidth after ordering: " << csc->maxBandwidth() << std::endl;
-    std::cout << "Average Profile after ordering: " << csc->averageProfile() << std::endl;
-    std::cout << "Max Profile after ordering: " << csc->maxProfile() << std::endl;
+    if (csc->checkSymmetry()) inversePermutation = csc->rcm();
+    else inversePermutation = csc->gorderWithJackard(sliceSize);
 
     std::ofstream file(matrix.filename + ".csv");
     BRS* brs = new BRS(sliceSize, fullPadding, file);
     brs->constructFromCSCMatrix(csc);
+    BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
 
     if (inversePermutation == nullptr)
     {
@@ -134,18 +109,36 @@ double Benchmark::runBRS(const Matrix& matrix)
             inversePermutation[i] = i;
         }
     }
-    const std::vector<int>& mapping = csc->getMapping();
-    const std::unordered_map<unsigned, CSC::Level1Data>& level1Hash = csc->getLevel1Hash();
-    const std::unordered_map<unsigned, CSC::Level2Data>& level2Hash = csc->getLevel2Hash();
-    std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, mapping, level2Hash, inversePermutation);
 
-    BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    double time = kernel.runBFS(sources, 1, 0);
+    std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
+    unsigned nRun = 1;
+    unsigned nIgnore = 0;
+    double total = 0;
+    unsigned iter = 0;
+    for (const auto source: sources)
+    {
+        double run = 0;
+        for (unsigned i = 0; i < nRun; ++i)
+        {
+            BFSResult result = kernel->runBFS(source);
+            if (i >= nIgnore)
+            {
+                run += result.time;
+            }
+            delete[] result.levels;
+        }
+    
+        run /= (nRun - nIgnore);
+        total += run;
+        ++iter;
+    }
+    total /= iter;
 
     file.close();
     delete csc;
     delete brs;
+    delete kernel;
     delete[] inversePermutation;
 
-    return time;
+    return total * 1000;
 }

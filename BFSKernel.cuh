@@ -1,7 +1,13 @@
-#ifndef BFSKERNEL_CUH
-#define BFSKERNEL_CUH
+#pragma once
 
 #include "BitMatrix.cuh"
+
+struct BFSResult
+{
+    double time;
+    unsigned* levels;
+    unsigned totalLevels;
+};
 
 class BFSKernel
 {
@@ -13,8 +19,8 @@ public:
     BFSKernel& operator=(BFSKernel&& other) noexcept = delete;
     virtual ~BFSKernel() = default;
 
-    virtual double hostCode(unsigned sourceVertex) = 0;
-    double runBFS(const std::vector<unsigned>& sources, unsigned nRun, unsigned nIgnore);
+    virtual BFSResult hostCode(unsigned sourceVertex) = 0;
+    BFSResult runBFS(unsigned sourceVertex);
 
 protected:
     BitMatrix* matrix;
@@ -26,29 +32,7 @@ BFSKernel::BFSKernel(BitMatrix* matrix)
 
 }
 
-double BFSKernel::runBFS(const std::vector<unsigned>& sources, unsigned nRun, unsigned nIgnore)
+BFSResult BFSKernel::runBFS(unsigned sourceVertex)
 {
-    double total = 0;
-    unsigned iter = 0;
-    for (const auto source: sources)
-    {
-        double run = 0;
-        for (unsigned i = 0; i < nRun; ++i)
-        {
-            double time = hostCode(source);
-            if (i >= nIgnore)
-            {
-                run += time;
-            }
-        }
-    
-        run /= (nRun - nIgnore);
-        total += run;
-        ++iter;
-    }
-    total /= iter;
-
-    return total * 1000;
+    return hostCode(sourceVertex);
 }
-
-#endif
