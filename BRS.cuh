@@ -1,5 +1,4 @@
-#ifndef BRS_CUH
-#define BRS_CUH
+#pragma once
 
 #include "BitMatrix.cuh"
 #include "CSC.cuh"
@@ -13,7 +12,8 @@ class BRS: public BitMatrix
 {
 public:
     struct SliceSetInformation
-    {
+    {   
+        unsigned noActive = 0;
         unsigned noEntered = 0;
     };
     struct SliceInformation
@@ -26,7 +26,7 @@ public:
         std::vector<MASK> masks;
         std::vector<unsigned> rsets;
     };
-    
+
 public:
     BRS(unsigned sliceSize, unsigned isFullPadding, std::ofstream& file);
     BRS(const BRS& other) = delete;
@@ -496,12 +496,15 @@ void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVi
     }
     averageRSet /= m_NoRealSliceSets;
     
+    double averageVSetActive = 0;
     double averageVSet = 0;
     for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         SliceSetInformation set = vsetInformation[vset];
+        averageVSetActive += set.noActive;
         averageVSet += set.noEntered;
     }
+    averageVSetActive /= m_NoVirtualSliceSets;
     averageVSet /= m_NoVirtualSliceSets;
 
     double averageSlice = 0;
@@ -519,5 +522,3 @@ void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVi
     fileFlush(m_File, source); fileFlush(m_File, totalLevels); fileFlush(m_File, totalVisited); fileFlush(m_File, time * 1000); fileFlush(m_File, averageRSet); fileFlush(m_File, averageVSet); fileFlush(m_File, averageSlice);
     m_File << std::endl;
 }
-
-#endif

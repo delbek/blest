@@ -1,5 +1,4 @@
-#ifndef CSC_CUH
-#define CSC_CUH
+#pragma once
 
 #include "Common.cuh"
 #include <fstream>
@@ -767,5 +766,3 @@ void CSC::applyPermutation(unsigned* inversePermutation)
 	m_ColPtrs = newColPtrs;
 	m_Rows = newRows;
 }
-
-#endif

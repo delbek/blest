@@ -89,31 +89,17 @@ double Benchmark::runBRS(const Matrix& matrix)
 {
     unsigned sliceSize = 8;
     bool fullPadding = false;
-    
+
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
-    
-    std::cout << "Average Bandwidth before ordering: " << csc->averageBandwidth() << std::endl;
-    std::cout << "Max Bandwidth before ordering: " << csc->maxBandwidth() << std::endl;
-    std::cout << "Average Profile before ordering: " << csc->averageProfile() << std::endl;
-    std::cout << "Max Profile before ordering: " << csc->maxProfile() << std::endl;
+
     unsigned* inversePermutation = nullptr;
-    if (csc->checkSymmetry())
-    {
-        inversePermutation = csc->rcm();
-    }
-    else
-    {
-        inversePermutation = csc->gorderWithJackard(sliceSize);
-    }
-    std::cout << "------" << std::endl;
-    std::cout << "Average Bandwidth after ordering: " << csc->averageBandwidth() << std::endl;
-    std::cout << "Max Bandwidth after ordering: " << csc->maxBandwidth() << std::endl;
-    std::cout << "Average Profile after ordering: " << csc->averageProfile() << std::endl;
-    std::cout << "Max Profile after ordering: " << csc->maxProfile() << std::endl;
+    if (csc->checkSymmetry()) inversePermutation = csc->rcm();
+    else inversePermutation = csc->gorderWithJackard(sliceSize);
 
     std::ofstream file(matrix.filename + ".csv");
     BRS* brs = new BRS(sliceSize, fullPadding, file);
     brs->constructFromCSCMatrix(csc);
+    BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
 
     if (inversePermutation == nullptr)
     {
@@ -123,15 +109,36 @@ double Benchmark::runBRS(const Matrix& matrix)
             inversePermutation[i] = i;
         }
     }
-    std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
 
-    BRSBFSKernel kernel(dynamic_cast<BitMatrix*>(brs));
-    double time = kernel.runBFS(sources, 1, 0);
+    std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
+    unsigned nRun = 1;
+    unsigned nIgnore = 0;
+    double total = 0;
+    unsigned iter = 0;
+    for (const auto source: sources)
+    {
+        double run = 0;
+        for (unsigned i = 0; i < nRun; ++i)
+        {
+            BFSResult result = kernel->runBFS(source);
+            if (i >= nIgnore)
+            {
+                run += result.time;
+            }
+            delete[] result.levels;
+        }
+    
+        run /= (nRun - nIgnore);
+        total += run;
+        ++iter;
+    }
+    total /= iter;
 
     file.close();
     delete csc;
     delete brs;
+    delete kernel;
     delete[] inversePermutation;
 
-    return time;
+    return total * 1000;
 }

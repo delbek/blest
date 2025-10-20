@@ -1,5 +1,4 @@
-#ifndef BRSBFSKernel_CUH
-#define BRSBFSKernel_CUH
+#pragma once
 
 #include "BFSKernel.cuh"
 #include "BRS.cuh"
@@ -32,7 +31,8 @@ namespace BRSBFSKernels
                                                     unsigned* __restrict__ frontierNextSizePtr,
                                                     //
                                                     unsigned* const __restrict__ visited,
-                                                    unsigned* const __restrict__ totalLevels
+                                                    unsigned* const __restrict__ totalLevels,
+                                                    unsigned* const __restrict__ levels
                                                     )
     {
         // MASK_BITS must be 16 BITS!
@@ -48,14 +48,14 @@ namespace BRSBFSKernels
         const unsigned noWords = *noWordsPtr;
         const unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
         const unsigned noSliceSets = *noSliceSetsPtr;
-        unsigned levels = 0;
+        unsigned levelCount = 0;
 
         const uint2* row2Ids = reinterpret_cast<const uint2*>(rowIds);
 
         bool cont = true;
         while (cont)
         {
-            if (threadID == 0) ++levels;
+            ++levelCount;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
@@ -88,6 +88,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.x] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -113,6 +114,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.y] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -162,6 +164,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.x] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -187,6 +190,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.y] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -228,7 +232,7 @@ namespace BRSBFSKernels
         }
         if (threadID == 0)
         {
-            *totalLevels = levels;
+            *totalLevels = levelCount;
         }
     }
 
@@ -250,7 +254,8 @@ namespace BRSBFSKernels
                                                     unsigned* __restrict__ frontierNextSizePtr,
                                                     //
                                                     unsigned* const __restrict__ visited,
-                                                    unsigned* const __restrict__ totalLevels
+                                                    unsigned* const __restrict__ totalLevels,
+                                                    unsigned* const __restrict__ levels
                                                     )
     {
         // MASK_BITS must be 32 BITS!
@@ -266,14 +271,14 @@ namespace BRSBFSKernels
         const unsigned noWords = *noWordsPtr;
         const unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
         const unsigned noSliceSets = *noSliceSetsPtr;
-        unsigned levels = 0;
+        unsigned levelCount = 0;
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
 
         bool cont = true;
         while (cont)
         {
-            if (threadID == 0) ++levels;
+            ++levelCount;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
@@ -307,6 +312,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.x] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -332,6 +338,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.y] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -367,6 +374,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.z] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -392,6 +400,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.w] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -442,6 +451,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.x] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -467,6 +477,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.y] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -502,6 +513,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.z] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -527,6 +539,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.w] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -568,7 +581,7 @@ namespace BRSBFSKernels
         }
         if (threadID == 0)
         {
-            *totalLevels = levels;
+            *totalLevels = levelCount;
         }
     }
 
@@ -590,7 +603,8 @@ namespace BRSBFSKernels
                                                 unsigned* __restrict__ frontierNextSizePtr,
                                                 //
                                                 unsigned* const __restrict__ visited,
-                                                unsigned* const __restrict__ totalLevels
+                                                unsigned* const __restrict__ totalLevels,
+                                                unsigned* const __restrict__ levels
                                                 )
     {
         // MASK_BITS must be 16 BITS!
@@ -606,14 +620,14 @@ namespace BRSBFSKernels
         const unsigned noWords = *noWordsPtr;
         const unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
         const unsigned noSliceSets = *noSliceSetsPtr;
-        unsigned levels = 0;
+        unsigned levelCount = 0;
 
         const uint2* row2Ids = reinterpret_cast<const uint2*>(rowIds);
 
         bool cont = true;
         while (cont)
         {
-            if (threadID == 0) ++levels;
+            ++levelCount;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
@@ -654,6 +668,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.x] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -679,6 +694,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.y] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -736,6 +752,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.x] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -761,6 +778,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.y] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = (0xFF) << (sliceIdx << 3);
@@ -802,7 +820,7 @@ namespace BRSBFSKernels
         }
         if (threadID == 0)
         {
-            *totalLevels = levels;
+            *totalLevels = levelCount;
         }
     }
 
@@ -824,7 +842,8 @@ namespace BRSBFSKernels
                                                 unsigned* __restrict__ frontierNextSizePtr,
                                                 //
                                                 unsigned* const __restrict__ visited,
-                                                unsigned* const __restrict__ totalLevels
+                                                unsigned* const __restrict__ totalLevels,
+                                                unsigned* const __restrict__ levels
                                                 )
     {
         // MASK_BITS must be 32 BITS!
@@ -840,14 +859,14 @@ namespace BRSBFSKernels
         const unsigned noWords = *noWordsPtr;
         const unsigned DIRECTION_THRESHOLD = *directionThresholdPtr;
         const unsigned noSliceSets = *noSliceSetsPtr;
-        unsigned levels = 0;
+        unsigned levelCount = 0;
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
 
         bool cont = true;
         while (cont)
         {
-            if (threadID == 0) ++levels;
+            ++levelCount;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
@@ -889,6 +908,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.x] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -914,6 +934,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.y] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -949,6 +970,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.z] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -974,6 +996,7 @@ namespace BRSBFSKernels
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
+                            levels[rows.w] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -1032,6 +1055,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.x] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -1057,6 +1081,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.y] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -1092,6 +1117,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.z] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -1117,6 +1143,7 @@ namespace BRSBFSKernels
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
+                                levels[rows.w] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
@@ -1158,7 +1185,7 @@ namespace BRSBFSKernels
         }
         if (threadID == 0)
         {
-            *totalLevels = levels;
+            *totalLevels = levelCount;
         }
     }
 
@@ -1180,7 +1207,9 @@ namespace BRSBFSKernels
                                                             unsigned* __restrict__ frontierNextSizePtr,
                                                             //
                                                             unsigned* const __restrict__ visited,
-                                                            unsigned* const __restrict__ totalLevels
+                                                            unsigned* const __restrict__ totalLevels,
+                                                            unsigned* const __restrict__ levels,
+                                                            unsigned* const __restrict__ vsetFlags
                                                             )
     {
         // MASK_BITS must be 32 BITS!
@@ -1194,14 +1223,16 @@ namespace BRSBFSKernels
         const unsigned laneID = threadID % WARP_SIZE;
 
         const unsigned noWords = *noWordsPtr;
-        unsigned levels = 0;
+        const unsigned noSliceSets = *noSliceSetsPtr;
+        const unsigned noVFlags = (noSliceSets + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
+        unsigned levelCount = 0;
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
 
         bool cont = true;
         while (cont)
         {
-            if (threadID == 0) ++levels;
+            ++levelCount;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
             {
@@ -1214,12 +1245,10 @@ namespace BRSBFSKernels
                 {
                     MASK f = frontier[rset >> 2];
                     s0 = f & 0x000000FF;
-                    s1 = (f & 0x0000FF00) >> 8;
-                    s2 = (f & 0x00FF0000) >> 16;
-                    s3 = (f & 0xFF000000) >> 24;
+                    s1 = ((f & 0x0000FF00) >> 8);
+                    s2 = ((f & 0x00FF0000) >> 16);
+                    s3 = ((f & 0xFF000000) >> 24);
                 }
-                bool mod0 = laneID % 9 == 0;
-                bool mod4 = laneID % 9 == 4;
 
                 unsigned tile = (vset << 5) + laneID; // slice: (vset * 128 + laneID * 4) - tile: slice / 4 = (vset * 32 + laneID)
                 uint4 rows = row4Ids[tile];
@@ -1227,33 +1256,37 @@ namespace BRSBFSKernels
 
                 MASK fragA = (mask & 0x0000FFFF);
                 MASK fragB = 0;
-                MASK region = laneID / 8;
-                if (mod0 || mod4)
                 {
-                    switch (region)
+                    MASK region = laneID / 8;
+                    bool mod0 = laneID % 9 == 0;
+                    bool mod4 = laneID % 9 == 4;
+                    if (mod0 || mod4)
                     {
-                        case 0:
+                        switch (region)
                         {
-                            fragB = (mod0) ? (s0) : (s0 << 8);
+                            case 0:
+                            {
+                                fragB = (mod0) ? (s0) : (s0 << 8);
+                                break;
+                            }
+                            case 1:
+                            {
+                                fragB = (mod0) ? (s1) : (s1 << 8);
+                                break;
+                            }
+                            case 2:
+                            {
+                                fragB = (mod0) ? (s2) : (s2 << 8);
+                                break;
+                            }
+                            case 3:
+                            {
+                                fragB = (mod0) ? (s3) : (s3 << 8);
                             break;
+                            }
+                            default:
+                                break;
                         }
-                        case 1:
-                        {
-                            fragB = (mod0) ? (s1) : (s1 << 8);
-                            break;
-                        }
-                        case 2:
-                        {
-                            fragB = (mod0) ? (s2) : (s2 << 8);
-                            break;
-                        }
-                        case 3:
-                        {
-                            fragB = (mod0) ? (s3) : (s3 << 8);
-                        break;
-                        }
-                        default:
-                            break;
                     }
                 }
                 unsigned fragC[2];
@@ -1268,13 +1301,16 @@ namespace BRSBFSKernels
                     unsigned old = atomicOr(&visited[word], temp);
                     if ((old & temp) == 0)
                     {
-                        old = atomicOr(&frontierNext[word], temp);
-                        unsigned sliceIdx = (bit >> 3);
-                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
-                        if ((old & sliceMask) == 0)
+                        levels[rows.x] = levelCount;
+                        atomicOr(&frontierNext[word], temp);
+                        unsigned rss = rows.x >> 3;
+                        unsigned vss = realPtrs[rss];
+                        word = vss / UNSIGNED_BITS;
+                        bit = vss % UNSIGNED_BITS;
+                        temp = (1 << bit);
+                        old = atomicOr(&vsetFlags[word], temp);
+                        if ((old & temp) == 0)
                         {
-                            unsigned rss = rows.x >> 3;
-                            unsigned vss = realPtrs[rss];
                             unsigned loc = atomicAdd(frontierNextSizePtr, 1);
                             sparseFrontierNextIds[loc] = vss;
                         }
@@ -1288,49 +1324,23 @@ namespace BRSBFSKernels
                     unsigned old = atomicOr(&visited[word], temp);
                     if ((old & temp) == 0)
                     {
-                        old = atomicOr(&frontierNext[word], temp);
-                        unsigned sliceIdx = (bit >> 3);
-                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
-                        if ((old & sliceMask) == 0)
+                        levels[rows.y] = levelCount;
+                        atomicOr(&frontierNext[word], temp);
+                        unsigned rss = rows.y >> 3;
+                        unsigned vss = realPtrs[rss];
+                        word = vss / UNSIGNED_BITS;
+                        bit = vss % UNSIGNED_BITS;
+                        temp = (1 << bit);
+                        old = atomicOr(&vsetFlags[word], temp);
+                        if ((old & temp) == 0)
                         {
-                            unsigned rss = rows.y >> 3;
-                            unsigned vss = realPtrs[rss];
                             unsigned loc = atomicAdd(frontierNextSizePtr, 1);
                             sparseFrontierNextIds[loc] = vss;
                         }
                     }
                 }
 
-                fragA = (mask & 0xFFFF0000);
-                fragB = 0;
-                if (mod0 || mod4)
-                {
-                    switch (region)
-                    {
-                        case 0:
-                        {
-                            fragB = (mod0) ? (s0 << 16) : (s0 << 24);
-                            break;
-                        }
-                        case 1:
-                        {
-                            fragB = (mod0) ? (s1 << 16) : (s1 << 24);
-                            break;
-                        }
-                        case 2:
-                        {
-                            fragB = (mod0) ? (s2 << 16) : (s2 << 24);
-                            break;
-                        }
-                        case 3:
-                        {
-                            fragB = (mod0) ? (s3 << 16) : (s3 << 24);
-                        break;
-                        }
-                        default:
-                            break;
-                    }
-                }
+                fragA = ((mask & 0xFFFF0000) >> 16);
                 fragC[0] = fragC[1] = 0;
                 m8n8k128(fragC, fragA, fragB);
 
@@ -1342,13 +1352,16 @@ namespace BRSBFSKernels
                     unsigned old = atomicOr(&visited[word], temp);
                     if ((old & temp) == 0)
                     {
-                        old = atomicOr(&frontierNext[word], temp);
-                        unsigned sliceIdx = (bit >> 3);
-                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
-                        if ((old & sliceMask) == 0)
+                        levels[rows.z] = levelCount;
+                        atomicOr(&frontierNext[word], temp);
+                        unsigned rss = rows.z >> 3;
+                        unsigned vss = realPtrs[rss];
+                        word = vss / UNSIGNED_BITS;
+                        bit = vss % UNSIGNED_BITS;
+                        temp = (1 << bit);
+                        old = atomicOr(&vsetFlags[word], temp);
+                        if ((old & temp) == 0)
                         {
-                            unsigned rss = rows.z >> 3;
-                            unsigned vss = realPtrs[rss];
                             unsigned loc = atomicAdd(frontierNextSizePtr, 1);
                             sparseFrontierNextIds[loc] = vss;
                         }
@@ -1362,13 +1375,16 @@ namespace BRSBFSKernels
                     unsigned old = atomicOr(&visited[word], temp);
                     if ((old & temp) == 0)
                     {
-                        old = atomicOr(&frontierNext[word], temp);
-                        unsigned sliceIdx = (bit >> 3);
-                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
-                        if ((old & sliceMask) == 0)
+                        levels[rows.w] = levelCount;
+                        atomicOr(&frontierNext[word], temp);
+                        unsigned rss = rows.w >> 3;
+                        unsigned vss = realPtrs[rss];
+                        word = vss / UNSIGNED_BITS;
+                        bit = vss % UNSIGNED_BITS;
+                        temp = (1 << bit);
+                        old = atomicOr(&vsetFlags[word], temp);
+                        if ((old & temp) == 0)
                         {
-                            unsigned rss = rows.w >> 3;
-                            unsigned vss = realPtrs[rss];
                             unsigned loc = atomicAdd(frontierNextSizePtr, 1);
                             sparseFrontierNextIds[loc] = vss;
                         }
@@ -1391,12 +1407,16 @@ namespace BRSBFSKernels
                 {
                     frontierNext[i] = 0;
                 }
+                for (unsigned i = threadID; i < noVFlags; i += noThreads)
+                {
+                    vsetFlags[i] = 0;
+                }
             }
             grid.sync();
         }
         if (threadID == 0)
         {
-            *totalLevels = levels;
+            *totalLevels = levelCount;
         }
     }
 };
@@ -1411,7 +1431,7 @@ public:
     BRSBFSKernel& operator=(BRSBFSKernel&& other) noexcept = delete;
     virtual ~BRSBFSKernel() = default;
 
-    virtual double hostCode(unsigned sourceVertex) final;
+    virtual BFSResult hostCode(unsigned sourceVertex) final;
 };
 
 BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
@@ -1420,7 +1440,7 @@ BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
 
 }
 
-double BRSBFSKernel::hostCode(unsigned sourceVertex)
+BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
 {
     BRS* brs = dynamic_cast<BRS*>(matrix);
     unsigned n = brs->getN();
@@ -1436,6 +1456,11 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
     const unsigned DIRECTION_THRESHOLD = noSliceSets / 2; // vset- or rset- based?
+
+    BFSResult result;
+    result.levels = new unsigned[n];
+    std::fill(result.levels, result.levels + n, UNSIGNED_MAX);
+    result.levels[sourceVertex] = 0;
 
     auto allocateSharedMemory = [](int blockSize) -> size_t
     {
@@ -1498,6 +1523,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* d_FrontierNextSize;
     unsigned* d_Visited;
     unsigned* d_TotalLevels;
+    unsigned* d_Levels;
+    unsigned* d_VSetFlags;
 
     // data structure
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
@@ -1516,6 +1543,7 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     // algorithm
     unsigned noWords = (n + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
+    unsigned noVFlags = (noSliceSets + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_DIRECTION_THRESHOLD, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
@@ -1526,15 +1554,19 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_TotalLevels, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * n))
+    gpuErrchk(cudaMalloc(&d_VSetFlags, sizeof(unsigned) * noVFlags))
 
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_TotalLevels, 0, sizeof(unsigned)))
+    gpuErrchk(cudaMemset(d_VSetFlags, 0, sizeof(unsigned) * noVFlags))
 
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_DIRECTION_THRESHOLD, &DIRECTION_THRESHOLD, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
 
     std::vector<unsigned> initialVset;
     unsigned sourceRealSet = sourceVertex / sliceSize;
@@ -1578,12 +1610,9 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
                             (void*)&d_SparseFrontierNextIds,
                             (void*)&d_FrontierNextSize,
                             (void*)&d_Visited,
-                            (void*)&d_TotalLevels
-                            /*
-                            (void*)&d_RSetInformation,
-                            (void*)&d_VSetInformation,
-                            (void*)&d_SliceInformation
-                            */
+                            (void*)&d_TotalLevels,
+                            (void*)&d_Levels,
+                            (void*)&d_VSetFlags
                         };
     gpuErrchk(cudaLaunchCooperativeKernel(
                                             kernelPtr,
@@ -1603,8 +1632,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
         totalVisited += __builtin_popcount(visited[i]);
     }
     delete[] visited;
-    unsigned totalLevels;
-    gpuErrchk(cudaMemcpy(&totalLevels, d_TotalLevels, sizeof(unsigned), cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaMemcpy(&result.totalLevels, d_TotalLevels, sizeof(unsigned), cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
@@ -1622,6 +1651,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaFree(d_FrontierNextSize))
     gpuErrchk(cudaFree(d_Visited))
     gpuErrchk(cudaFree(d_TotalLevels))
+    gpuErrchk(cudaFree(d_Levels))
+    gpuErrchk(cudaFree(d_VSetFlags))
 
     BRS::SliceSetInformation* h_RSetInformation = new BRS::SliceSetInformation[noRealSliceSets];
     BRS::SliceSetInformation* h_VSetInformation = new BRS::SliceSetInformation[noSliceSets];
@@ -1637,9 +1668,8 @@ double BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaFree(d_SliceInformation))
     */
 
-    brs->kernelAnalysis(sourceVertex, totalLevels, totalVisited, (end - start), h_RSetInformation, h_VSetInformation, h_SliceInformation);
+    brs->kernelAnalysis(sourceVertex, result.totalLevels, totalVisited, (end - start), h_RSetInformation, h_VSetInformation, h_SliceInformation);
 
-    return (end - start);
+    result.time = (end - start);
+    return result;
 }
-
-#endif

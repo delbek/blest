@@ -1,5 +1,4 @@
-#ifndef COMMON_CUH
-#define COMMON_CUH
+#pragma once
 
 #include <iostream>
 #include "omp.h"
@@ -56,5 +55,3 @@ unsigned* chainPermutations(unsigned n, unsigned* perm1, unsigned* perm2)
     delete[] perm2;
     return chained;
 }
-
-#endif

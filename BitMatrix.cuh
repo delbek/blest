@@ -1,5 +1,4 @@
-#ifndef BITMATRIX_CUH
-#define BITMATRIX_CUH
+#pragma once
 
 #include "Common.cuh"
 
@@ -13,5 +12,3 @@ public:
     BitMatrix& operator=(BitMatrix&& other) noexcept = delete;
     virtual ~BitMatrix() = default;
 };
-
-#endif
