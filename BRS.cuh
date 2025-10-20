@@ -54,7 +54,7 @@ public:
     [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
 
 private:
-    void distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
+    void distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
     void formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset);
 
 private:
@@ -115,94 +115,86 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     assert(m_NoRealSliceSets % superSetSize == 0);
 
-    std::vector<VSet> vsets;
+    std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
-        std::vector<VSet> mySets;
         #pragma omp for
-        for (unsigned rsetTile = 0; rsetTile < m_NoRealSliceSets; rsetTile += superSetSize)
+        for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
         {
-            VSet vset;
-            vset.rows.resize(128);
-            vset.rows.assign(128, 0);
-            vset.masks.resize(32);
-            vset.masks.assign(32, 0);
-            for (unsigned rset = rsetTile; rset < rsetTile + superSetSize; ++rset)
+            unsigned sliceSetColStart = rset * m_SliceSize;
+            unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
+            
+            std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
+            for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
             {
-                vset.rsets.emplace_back(rset);
-                unsigned sliceSetColStart = rset * m_SliceSize;
-                unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
-                
-                std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
-                for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
+                ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
+            }
+    
+            std::vector<unsigned> tempRowIds;
+            std::vector<MASK> tempMasks;
+    
+            unsigned i = 0;
+            while (i < m_N) 
+            {
+                MASK individual = 0;
+                unsigned nextRow = m_N;
+    
+                for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j) 
                 {
-                    ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
-                }
-        
-                std::vector<unsigned> tempRowIds;
-                std::vector<MASK> tempMasks;
-        
-                unsigned i = 0;
-                while (i < m_N) 
-                {
-                    MASK individual = 0;
-                    unsigned nextRow = m_N;
-        
-                    for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j) 
+                    unsigned idx = j - sliceSetColStart;
+                    while (ptrs[idx] < colPtrs[j + 1] && rows[ptrs[idx]] < i)
                     {
-                        unsigned idx = j - sliceSetColStart;
-                        while (ptrs[idx] < colPtrs[j + 1] && rows[ptrs[idx]] < i)
+                        ++ptrs[idx];
+                    }
+    
+                    unsigned p = ptrs[idx];
+                    if (p < colPtrs[j + 1]) // have nonzero unprocessed
+                    {
+                        if (rows[p] == i) // nonzero in the target row
                         {
-                            ++ptrs[idx];
+                            individual |= (1 << idx);
+                            ++p;
                         }
-        
-                        unsigned p = ptrs[idx];
-                        if (p < colPtrs[j + 1]) // have nonzero unprocessed
+                        ptrs[idx] = p;
+                        if (p < colPtrs[j + 1]) // next closest nonzero across all columns having nonzero unprocessed
                         {
-                            if (rows[p] == i) // nonzero in the target row
-                            {
-                                individual |= (1 << idx);
-                                ++p;
-                            }
-                            ptrs[idx] = p;
-                            if (p < colPtrs[j + 1]) // next closest nonzero across all columns having nonzero unprocessed
-                            {
-                                nextRow = std::min(nextRow, rows[p]);
-                            }
+                            nextRow = std::min(nextRow, rows[p]);
                         }
                     }
-        
-                    if (individual != 0)
-                    {            
-                        tempRowIds.emplace_back(i);
-                        tempMasks.emplace_back(individual);
-                    }
-        
-                    i = nextRow;
                 }
-        
-                this->formSuperVSet4(rset % superSetSize, tempRowIds, tempMasks, vset);
+    
+                if (individual != 0)
+                {            
+                    tempRowIds.emplace_back(i);
+                    tempMasks.emplace_back(individual);
+                }
+    
+                i = nextRow;
             }
-            mySets.emplace_back(vset);
-        }
-        #pragma omp critical
-        {
-            for (unsigned i = 0; i < mySets.size(); ++i)
-            {
-                vsets.emplace_back(mySets[i]);
-            }
+    
+            this->distributeSlices(rset, tempRowIds, tempMasks, rsets[rset]);
         }
     }
+    std::vector<VSet> vsets;
+    for (unsigned i = 0; i < rsets.size(); ++i)
+    {
+        for (auto& vset: rsets[i])
+        {
+            vsets.emplace_back(std::move(vset));
+        }
+    }
+    rsets.clear();
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
     std::fill(m_RealPtrs, m_RealPtrs + m_NoRealSliceSets + 1, 0);
     for (unsigned vset = 0; vset < vsets.size(); ++vset)
     {
-        for (unsigned i = 0; i < vsets[vset].rsets.size(); ++i)
-        {
-            unsigned rset = vsets[vset].rsets[i];
-            m_RealPtrs[rset] = vset;
-        }
+        unsigned rset = vsets[vset].rsets.front();
+        ++m_RealPtrs[rset + 1];
+    }
+    for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
+    {
+        m_RealPtrs[rset + 1] += m_RealPtrs[rset];
     }
     m_NoVirtualSliceSets = vsets.size();
 
@@ -241,40 +233,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     this->brsAnalysis();
 }
 
-void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset)
-{
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned regionThreadSize = WARP_SIZE / 4;
-
-    for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
-    {
-        unsigned region = (thread % 4);
-        if (region != targetRegion)
-        {
-            continue;
-        }
-        unsigned regionThreadId = thread / 4;
-        MASK cumulative = 0;
-        unsigned cumulativeCounter = 0;
-        for (unsigned mask = 0; mask < noMasks; ++mask)
-        {
-            unsigned current = mask * regionThreadSize + regionThreadId;
-            if (current < tempRowIds.size())
-            {
-                vset.rows[thread * noMasks + mask] = tempRowIds[current];
-                cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
-            }
-            else
-            {
-                vset.rows[thread * noMasks + mask] = 0;
-                ++cumulativeCounter;
-            }
-        }
-        vset.masks[thread] = cumulative;
-    }
-}
-
-void BRS::distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
+void BRS::distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned fullWork = WARP_SIZE * noMasks;
@@ -283,6 +242,7 @@ void BRS::distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>&
     for (unsigned complete = 0; complete < noComplete; ++complete)
     {
         VSet set;
+        set.rsets.emplace_back(rset);
         for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
         {
             MASK cumulative = 0;
@@ -302,6 +262,7 @@ void BRS::distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>&
     if (leftoverStart < tempRowIds.size())
     {
         VSet set;
+        set.rsets.emplace_back(rset);
 
         if (m_IsFullPadding)
         {
@@ -355,6 +316,39 @@ void BRS::distributeSlices(std::vector<unsigned>& tempRowIds, std::vector<MASK>&
     }
 }
 
+void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset)
+{
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+    unsigned regionThreadSize = WARP_SIZE / 4;
+
+    for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+    {
+        unsigned region = (thread % 4);
+        if (region != targetRegion)
+        {
+            continue;
+        }
+        unsigned regionThreadId = thread / 4;
+        MASK cumulative = 0;
+        unsigned cumulativeCounter = 0;
+        for (unsigned mask = 0; mask < noMasks; ++mask)
+        {
+            unsigned current = mask * regionThreadSize + regionThreadId;
+            if (current < tempRowIds.size())
+            {
+                vset.rows[thread * noMasks + mask] = tempRowIds[current];
+                cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
+            }
+            else
+            {
+                vset.rows[thread * noMasks + mask] = 0;
+                ++cumulativeCounter;
+            }
+        }
+        vset.masks[thread] = cumulative;
+    }
+}
+
 void BRS::printBRSData()
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
@@ -378,8 +372,6 @@ void BRS::printBRSData()
     }
     average /= m_NoVirtualSliceSets;
     std::cout << "Average number of slices in each set " << average << std::endl;
-    std::cout << "Min number of slices in any set " << min << std::endl;
-    std::cout << "Max number of slices in any set " << max << std::endl;
 
     double variance = 0;
     for (unsigned ss = 0; ss < m_NoVirtualSliceSets; ++ss)
@@ -391,6 +383,9 @@ void BRS::printBRSData()
     variance /= m_NoVirtualSliceSets;
     double standardDeviation = std::sqrt(variance);
     std::cout << "Standard deviation of the number of slices in each set: " << standardDeviation << std::endl;
+
+    std::cout << "Min number of slices in any set " << min << std::endl;
+    std::cout << "Max number of slices in any set " << max << std::endl;
 
     unsigned padded = 0;
     unsigned totalNumberOfEdgesCheck = 0;

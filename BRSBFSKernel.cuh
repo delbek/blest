@@ -1100,12 +1100,7 @@ namespace BRSBFSKernels
                             }
                         }
 
-                        fragA = (mask & 0xFFFF0000);
-                        fragB = 0;
-                        if (laneID % 9 == 0 || laneID % 9 == 4)
-                        {
-                            fragB = (laneID % 9 == 0) ? (origFragB << 16) : (origFragB << 24);
-                        }
+                        fragA = ((mask & 0xFFFF0000) >> 16);
                         fragC[0] = fragC[1] = 0;
                         m8n8k128(fragC, fragA, fragB);
     
@@ -1468,8 +1463,6 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     };
 
     void* kernelPtr = nullptr;
-    kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks4SuperSliceSet;
-    /*
     if (sliceSize == 8 && noMasks == 2)
     {
         if (isFullPadding)
@@ -1496,7 +1489,6 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     {
         throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
     }
-    */
 
     int gridSize, blockSize;
     gpuErrchk(cudaOccupancyMaxPotentialBlockSizeVariableSMem(
@@ -1611,8 +1603,8 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
                             (void*)&d_FrontierNextSize,
                             (void*)&d_Visited,
                             (void*)&d_TotalLevels,
-                            (void*)&d_Levels,
-                            (void*)&d_VSetFlags
+                            (void*)&d_Levels
+                            //(void*)&d_VSetFlags
                         };
     gpuErrchk(cudaLaunchCooperativeKernel(
                                             kernelPtr,

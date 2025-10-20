@@ -88,7 +88,7 @@ void Benchmark::main()
 double Benchmark::runBRS(const Matrix& matrix)
 {
     unsigned sliceSize = 8;
-    bool fullPadding = false;
+    bool fullPadding = true;
 
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
 
