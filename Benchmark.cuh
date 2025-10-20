@@ -58,9 +58,9 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
-        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true}
+        {"/home/delbek/GAP-road.mtx", "/home/delbek/GAP-road.txt", true, false}
         /*
+        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true}
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
         {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
@@ -88,7 +88,7 @@ void Benchmark::main()
 double Benchmark::runBRS(const Matrix& matrix)
 {
     unsigned sliceSize = 8;
-    bool fullPadding = true;
+    bool fullPadding = false;
 
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
 

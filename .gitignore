@@ -7,3 +7,4 @@ res/
 *.out
 *.err
 berrybees-master/
+*.ncu-rep

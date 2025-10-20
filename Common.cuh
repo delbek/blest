@@ -10,7 +10,7 @@ using namespace cooperative_groups;
 
 #define M 8
 #define K 128
-#define MASK unsigned short
+#define MASK unsigned
 constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 constexpr unsigned UNSIGNED_BITS = sizeof(unsigned) * 8;
 #define WARP_SIZE 32
