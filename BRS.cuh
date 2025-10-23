@@ -26,6 +26,29 @@ public:
         std::vector<MASK> masks;
         std::vector<unsigned> rsets;
     };
+    struct VSetStatistics
+    {
+        double averageBucketPerMask = 0;
+        double averageBucketPerWarp = 0;
+        double averageBucketRangeMask = 0;
+        double averageBucketRangeWarp = 0;
+
+        void operator+=(const VSetStatistics& right)
+        {
+            averageBucketPerMask += right.averageBucketPerMask;
+            averageBucketPerWarp += right.averageBucketPerWarp;
+            averageBucketRangeMask += right.averageBucketRangeMask;
+            averageBucketRangeWarp += right.averageBucketRangeWarp;
+        }
+
+        void operator/=(unsigned right)
+        {
+            averageBucketPerMask /= right;
+            averageBucketPerWarp /= right;
+            averageBucketRangeMask /= right;
+            averageBucketRangeWarp /= right;
+        }
+    };
 
 public:
     BRS(unsigned sliceSize, unsigned isFullPadding, std::ofstream& file);
@@ -54,8 +77,9 @@ public:
     [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
 
 private:
-    void distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
+    VSetStatistics distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
     void formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset);
+    VSetStatistics computeVSetStatistics(const VSet& vset);
 
 private:
     unsigned m_N;
@@ -115,9 +139,11 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     assert(m_NoRealSliceSets % superSetSize == 0);
 
+    VSetStatistics stats;
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
+        VSetStatistics threadStats;
         #pragma omp for
         for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
         {
@@ -172,7 +198,11 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 i = nextRow;
             }
     
-            this->distributeSlices(rset, tempRowIds, tempMasks, rsets[rset]);
+            threadStats += this->distributeSlices(rset, tempRowIds, tempMasks, rsets[rset]);
+        }
+        #pragma omp critical
+        {
+            stats += threadStats;
         }
     }
     std::vector<VSet> vsets;
@@ -184,6 +214,12 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
     }
     rsets.clear();
+
+    stats /= vsets.size();
+    std::cout << "Average buckets per mask: " << stats.averageBucketPerMask << std::endl;
+    std::cout << "Average buckets per warp: " << stats.averageBucketPerWarp << std::endl;
+    std::cout << "Average bucket range per mask: " << stats.averageBucketRangeMask << std::endl;
+    std::cout << "Average bucket range per warp: " << stats.averageBucketRangeWarp << std::endl;
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
     std::fill(m_RealPtrs, m_RealPtrs + m_NoRealSliceSets + 1, 0);
@@ -233,10 +269,12 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     this->brsAnalysis();
 }
 
-void BRS::distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
+BRS::VSetStatistics BRS::distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets)
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned fullWork = WARP_SIZE * noMasks;
+
+    VSetStatistics stats;
 
     unsigned noComplete = tempRowIds.size() / fullWork;
     for (unsigned complete = 0; complete < noComplete; ++complete)
@@ -255,6 +293,7 @@ void BRS::distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std
             }
             set.masks.emplace_back(cumulative);
         }
+        stats += this->computeVSetStatistics(set);
         vsets.emplace_back(set);
     }
 
@@ -312,8 +351,11 @@ void BRS::distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std
             }
         }
 
+        stats += this->computeVSetStatistics(set);
         vsets.emplace_back(set);
     }
+
+    return stats;
 }
 
 void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset)
@@ -347,6 +389,58 @@ void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowId
         }
         vset.masks[thread] = cumulative;
     }
+}
+
+BRS::VSetStatistics BRS::computeVSetStatistics(const VSet& vset)
+{
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+    VSetStatistics stats;
+
+    std::unordered_map<unsigned, unsigned> warpBuckets;
+    unsigned minWarp = UNSIGNED_MAX;
+    unsigned maxWarp = 0;
+    for (unsigned mask = 0; mask < noMasks; ++mask)
+    {
+        std::unordered_map<unsigned, unsigned> maskBuckets;
+        unsigned minMask = UNSIGNED_MAX;
+        unsigned maxMask = 0;
+        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+        {
+            unsigned current = thread * noMasks + mask;
+            if (current >= vset.rows.size()) continue;
+            unsigned bucket = vset.rows[current] / MASK_BITS;
+            if (maskBuckets.find(bucket) != maskBuckets.end())
+            {
+                ++maskBuckets[bucket];
+            }
+            else
+            {
+                maskBuckets[bucket] = 1;
+            }
+            if (warpBuckets.find(bucket) != warpBuckets.end())
+            {
+                ++warpBuckets[bucket];
+            }
+            else
+            {
+                warpBuckets[bucket] = 1;
+            }
+            if (bucket < minMask) minMask = bucket;
+            if (bucket > maxMask) maxMask = bucket;
+            if (bucket < minWarp) minWarp = bucket;
+            if (bucket > maxWarp) maxWarp = bucket;
+        }
+        
+        stats.averageBucketPerMask += maskBuckets.size();
+        stats.averageBucketRangeMask += (maxMask - minMask);
+    }
+    stats.averageBucketPerMask /= noMasks;
+    stats.averageBucketRangeMask /= noMasks;
+    
+    stats.averageBucketPerWarp = warpBuckets.size();
+    stats.averageBucketRangeWarp = (maxWarp - minWarp);
+
+    return stats;
 }
 
 void BRS::printBRSData()

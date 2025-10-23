@@ -33,16 +33,16 @@ add_executable(sutensor
 )
 
 target_link_libraries(sutensor
-		OpenMP::OpenMP_CXX
+    OpenMP::OpenMP_CXX
     cuda
     CUDA::cudart
     ${CUDA_LIBRARIES}
 )
 
 target_compile_options(sutensor PRIVATE
-  -O3 -g
-  $<$<COMPILE_LANGUAGE:CUDA>:
-		-O3
+    -O3 -g
+    $<$<COMPILE_LANGUAGE:CUDA>:
+    -O3
     --generate-line-info
-  >
+    >
 )
