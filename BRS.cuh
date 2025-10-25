@@ -7,6 +7,7 @@
 #include <vector>
 #include <sstream>
 #include <unordered_map>
+#include <map>
 
 class BRS: public BitMatrix
 {
@@ -125,10 +126,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     unsigned* rows = csc->getRows();
     fileFlush(m_File, m_N); fileFlush(m_File, colPtrs[m_N]);
 
-    unsigned superSetSize = 4;
-
     m_NoRealSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
-    for (; m_NoRealSliceSets % superSetSize != 0; ++m_NoRealSliceSets);
     m_NoVirtualSliceSets = 0;
 
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)
@@ -136,8 +134,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         throw std::runtime_error("Invalid slice size provided.");
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
-
-    assert(m_NoRealSliceSets % superSetSize == 0);
 
     VSetStatistics stats;
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
@@ -147,27 +143,29 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         #pragma omp for
         for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
         {
+            std::map<unsigned, MASK> realSet;
+            std::vector<std::pair<unsigned, MASK>> additionals;
+         
             unsigned sliceSetColStart = rset * m_SliceSize;
             unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
-            
-            std::vector<unsigned> ptrs(sliceSetColEnd - sliceSetColStart);
-            for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j)
+            unsigned noCols = sliceSetColEnd - sliceSetColStart;
+
+            std::vector<unsigned> ptrs(noCols);
+            for (unsigned idx = 0; idx < noCols; ++idx)
             {
-                ptrs[j - sliceSetColStart] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
+                unsigned j = sliceSetColStart + idx;
+                ptrs[idx] = colPtrs[j]; // do note that for this approach to work out, adjacency list must be sorted
             }
     
-            std::vector<unsigned> tempRowIds;
-            std::vector<MASK> tempMasks;
-    
             unsigned i = 0;
-            while (i < m_N) 
+            while (i < m_N)
             {
                 MASK individual = 0;
                 unsigned nextRow = m_N;
     
-                for (unsigned j = sliceSetColStart; j < sliceSetColEnd; ++j) 
+                for (unsigned idx = 0; idx < noCols; ++idx) 
                 {
-                    unsigned idx = j - sliceSetColStart;
+                    unsigned j = sliceSetColStart + idx;
                     while (ptrs[idx] < colPtrs[j + 1] && rows[ptrs[idx]] < i)
                     {
                         ++ptrs[idx];
@@ -190,12 +188,47 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 }
     
                 if (individual != 0)
-                {            
-                    tempRowIds.emplace_back(i);
-                    tempMasks.emplace_back(individual);
+                {
+                    realSet[i] = individual;
+                    additionals.emplace_back(i, individual);
                 }
     
                 i = nextRow;
+            }
+
+            if (csc->averageDegree() < 4)
+            {
+                std::vector<std::pair<unsigned, MASK>> nextAdditionals;
+                for (unsigned level = 1; level < LEVELS_TO_FUSE; ++level)
+                {
+                    if (realSet.size() > 80)
+                    {
+                        break;
+                    }
+                    for (const auto& additional: additionals)
+                    {
+                        unsigned j = additional.first;
+                        for (unsigned ptr = colPtrs[j]; ptr < colPtrs[j + 1]; ++ptr)
+                        {
+                            unsigned i = rows[ptr];
+                            if (realSet.contains(i)) continue;
+                            realSet[i] = additional.second;
+                            nextAdditionals.emplace_back(i, additional.second);
+                        }
+                    }
+                    additionals = std::move(nextAdditionals);
+                    nextAdditionals.clear();
+                }
+            }
+
+            std::vector<unsigned> tempRowIds;
+            tempRowIds.reserve(realSet.size());
+            std::vector<MASK> tempMasks;
+            tempMasks.reserve(realSet.size());
+            for (const auto& slice: realSet)
+            {
+                tempRowIds.emplace_back(slice.first);
+                tempMasks.emplace_back(slice.second);
             }
     
             threadStats += this->distributeSlices(rset, tempRowIds, tempMasks, rsets[rset]);

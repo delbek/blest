@@ -28,6 +28,7 @@ public:
 	[[nodiscard]] inline unsigned& getNNZ() {return m_NNZ;}
 	[[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
 	[[nodiscard]] inline unsigned*& getRows() {return m_Rows;}
+	[[nodiscard]] inline double& averageDegree() {return m_AverageDegree;}
 
 	// metrics
 	unsigned maxBandwidth();
@@ -53,8 +54,10 @@ public:
 private:
 	unsigned m_N;
 	unsigned m_NNZ;
+	double m_AverageDegree;
 	unsigned* m_ColPtrs;
 	unsigned* m_Rows;
+	CSC* m_Transpose;
 };
 
 CSC::CSC(std::string filename, bool undirected, bool binary)
@@ -100,6 +103,10 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	std::cout << "Number of edges: " << nnzs.size() << std::endl;
 	std::cout << "Sparsity: " << std::fixed << static_cast<double>(nnzs.size()) / (static_cast<double>(m_N) * static_cast<double>(m_N)) << std::endl;
 
+	// there exists an edge from j (second) -> i (first)
+
+	// normal
+	// sort i's
 	std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
 	{
 		if (a.second == b.second)
@@ -124,16 +131,54 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		m_Rows[iter] = nnzs[iter].first;
 	}
 
+	double averageDegree = 0;
 	for (unsigned j = 0; j < m_N; ++j)
 	{
 		m_ColPtrs[j + 1] += m_ColPtrs[j];
+		averageDegree += m_ColPtrs[j + 1] - m_ColPtrs[j];
 	}
+	averageDegree /= m_N;
+	std::cout << "Average degree: " << averageDegree << std::endl;
+	//
+
+	// transpose
+	// sort j's
+	std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
+	{
+		if (a.first == b.first)
+		{
+			return a.second < b.second;
+		}
+		else
+		{
+			return a.first < b.first;
+		}
+	});
+
+	m_Transpose = new CSC();
+	m_Transpose->m_ColPtrs = new unsigned[m_N + 1];
+	m_Transpose->m_Rows = new unsigned[m_NNZ];
+
+	std::fill(m_Transpose->m_ColPtrs, m_Transpose->m_ColPtrs + m_N + 1, 0);
+
+	for (unsigned iter = 0; iter < m_NNZ; ++iter)
+	{
+		++m_Transpose->m_ColPtrs[nnzs[iter].first + 1];
+		m_Transpose->m_Rows[iter] = nnzs[iter].second;
+	}
+
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		m_Transpose->m_ColPtrs[j + 1] += m_Transpose->m_ColPtrs[j];
+	}
+	//
 }
 
 CSC::~CSC()
 {
 	delete[] m_ColPtrs;
 	delete[] m_Rows;
+	delete m_Transpose;
 }
 
 unsigned CSC::maxBandwidth()
@@ -340,7 +385,7 @@ unsigned* CSC::gorder(unsigned windowSize)
 
 unsigned* CSC::gorderWithJackard(unsigned sliceSize)
 {
-	unsigned windowSize = sliceSize * 33168;
+	unsigned windowSize = sliceSize * 8192;
 
 	Gorder::Graph g;
 	g.setFilename("gorder");
