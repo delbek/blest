@@ -900,52 +900,99 @@ namespace BRSBFSKernels
                     fragC[2] = fragC[3] = 0;
                     m8n8k128(&fragC[2], fragA, fragB);
 
-                    #pragma unroll 4
-                    for (unsigned i = 0; i < 4; ++i)
+                    if (fragC[0])
                     {
-                        if (fragC[i] == 0)
-                        {
-                            continue;
-                        }
-                        unsigned row;
-                        switch (i)
-                        {
-                        case 0:
-                        {
-                            row = rows.x;
-                            break;
-                        }
-                        case 1:
-                        {
-                            row = rows.y;
-                            break;
-                        }
-                        case 2:
-                        {
-                            row = rows.z;
-                            break;
-                        }
-                        case 3:
-                        {
-                            row = rows.w;
-                            break;
-                        }
-                        default:
-                            break;
-                        }
-                        unsigned word = row / UNSIGNED_BITS;
-                        unsigned bit = row % UNSIGNED_BITS;
+                        unsigned word = rows.x / UNSIGNED_BITS;
+                        unsigned bit = rows.x % UNSIGNED_BITS;
                         unsigned temp = (1 << bit);
                         unsigned old = atomicOr(&visited[word], temp);
                         if ((old & temp) == 0)
                         {
-                            levels[row] = levelCount;
+                            levels[rows.x] = levelCount;
                             old = atomicOr(&frontierNext[word], temp);
                             unsigned sliceIdx = (bit >> 3);
                             unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
                             if ((old & sliceMask) == 0)
                             {
-                                unsigned rss = row >> 3;
+                                unsigned rss = rows.x >> 3;
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
+                                unsigned size = end - start;
+                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                for (unsigned vset = start; vset < end; ++vset)
+                                {
+                                    sparseFrontierNextIds[loc++] = vset;
+                                }
+                            }
+                        }
+                    }
+                    if (fragC[1])
+                    {
+                        unsigned word = rows.y / UNSIGNED_BITS;
+                        unsigned bit = rows.y % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
+                        if ((old & temp) == 0)
+                        {
+                            levels[rows.y] = levelCount;
+                            old = atomicOr(&frontierNext[word], temp);
+                            unsigned sliceIdx = (bit >> 3);
+                            unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                            if ((old & sliceMask) == 0)
+                            {
+                                unsigned rss = rows.y >> 3;
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
+                                unsigned size = end - start;
+                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                for (unsigned vset = start; vset < end; ++vset)
+                                {
+                                    sparseFrontierNextIds[loc++] = vset;
+                                }
+                            }
+                        }
+                    }
+                    if (fragC[2])
+                    {
+                        unsigned word = rows.z / UNSIGNED_BITS;
+                        unsigned bit = rows.z % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
+                        if ((old & temp) == 0)
+                        {
+                            levels[rows.z] = levelCount;
+                            old = atomicOr(&frontierNext[word], temp);
+                            unsigned sliceIdx = (bit >> 3);
+                            unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                            if ((old & sliceMask) == 0)
+                            {
+                                unsigned rss = rows.z >> 3;
+                                unsigned start = realPtrs[rss];
+                                unsigned end = realPtrs[rss + 1];
+                                unsigned size = end - start;
+                                unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                for (unsigned vset = start; vset < end; ++vset)
+                                {
+                                    sparseFrontierNextIds[loc++] = vset;
+                                }
+                            }
+                        }
+                    }
+                    if (fragC[3])
+                    {
+                        unsigned word = rows.w / UNSIGNED_BITS;
+                        unsigned bit = rows.w % UNSIGNED_BITS;
+                        unsigned temp = (1 << bit);
+                        unsigned old = atomicOr(&visited[word], temp);
+                        if ((old & temp) == 0)
+                        {
+                            levels[rows.w] = levelCount;
+                            old = atomicOr(&frontierNext[word], temp);
+                            unsigned sliceIdx = (bit >> 3);
+                            unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                            if ((old & sliceMask) == 0)
+                            {
+                                unsigned rss = rows.w >> 3;
                                 unsigned start = realPtrs[rss];
                                 unsigned end = realPtrs[rss + 1];
                                 unsigned size = end - start;
@@ -1001,52 +1048,99 @@ namespace BRSBFSKernels
                         fragC[2] = fragC[3] = 0;
                         m8n8k128(&fragC[2], fragA, fragB);
 
-                        #pragma unroll 4
-                        for (unsigned i = 0; i < 4; ++i)
+                        if (fragC[0])
                         {
-                            if (fragC[i] == 0)
-                            {
-                                continue;
-                            }
-                            unsigned row;
-                            switch (i)
-                            {
-                            case 0:
-                            {
-                                row = rows.x;
-                                break;
-                            }
-                            case 1:
-                            {
-                                row = rows.y;
-                                break;
-                            }
-                            case 2:
-                            {
-                                row = rows.z;
-                                break;
-                            }
-                            case 3:
-                            {
-                                row = rows.w;
-                                break;
-                            }
-                            default:
-                                break;
-                            }
-                            unsigned word = row / UNSIGNED_BITS;
-                            unsigned bit = row % UNSIGNED_BITS;
+                            unsigned word = rows.x / UNSIGNED_BITS;
+                            unsigned bit = rows.x % UNSIGNED_BITS;
                             unsigned temp = (1 << bit);
                             unsigned old = atomicOr(&visited[word], temp);
                             if ((old & temp) == 0)
                             {
-                                levels[row] = levelCount;
+                                levels[rows.x] = levelCount;
                                 old = atomicOr(&frontierNext[word], temp);
                                 unsigned sliceIdx = (bit >> 3);
                                 unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
                                 if ((old & sliceMask) == 0)
                                 {
-                                    unsigned rss = row >> 3;
+                                    unsigned rss = rows.x >> 3;
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
+                                    unsigned size = end - start;
+                                    unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                    for (unsigned vset = start; vset < end; ++vset)
+                                    {
+                                        sparseFrontierNextIds[loc++] = vset;
+                                    }
+                                }
+                            }
+                        }
+                        if (fragC[1])
+                        {
+                            unsigned word = rows.y / UNSIGNED_BITS;
+                            unsigned bit = rows.y % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                levels[rows.y] = levelCount;
+                                old = atomicOr(&frontierNext[word], temp);
+                                unsigned sliceIdx = (bit >> 3);
+                                unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                                if ((old & sliceMask) == 0)
+                                {
+                                    unsigned rss = rows.y >> 3;
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
+                                    unsigned size = end - start;
+                                    unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                    for (unsigned vset = start; vset < end; ++vset)
+                                    {
+                                        sparseFrontierNextIds[loc++] = vset;
+                                    }
+                                }
+                            }
+                        }
+                        if (fragC[2])
+                        {
+                            unsigned word = rows.z / UNSIGNED_BITS;
+                            unsigned bit = rows.z % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                levels[rows.z] = levelCount;
+                                old = atomicOr(&frontierNext[word], temp);
+                                unsigned sliceIdx = (bit >> 3);
+                                unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                                if ((old & sliceMask) == 0)
+                                {
+                                    unsigned rss = rows.z >> 3;
+                                    unsigned start = realPtrs[rss];
+                                    unsigned end = realPtrs[rss + 1];
+                                    unsigned size = end - start;
+                                    unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                                    for (unsigned vset = start; vset < end; ++vset)
+                                    {
+                                        sparseFrontierNextIds[loc++] = vset;
+                                    }
+                                }
+                            }
+                        }
+                        if (fragC[3])
+                        {
+                            unsigned word = rows.w / UNSIGNED_BITS;
+                            unsigned bit = rows.w % UNSIGNED_BITS;
+                            unsigned temp = (1 << bit);
+                            unsigned old = atomicOr(&visited[word], temp);
+                            if ((old & temp) == 0)
+                            {
+                                levels[rows.w] = levelCount;
+                                old = atomicOr(&frontierNext[word], temp);
+                                unsigned sliceIdx = (bit >> 3);
+                                unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                                if ((old & sliceMask) == 0)
+                                {
+                                    unsigned rss = rows.w >> 3;
                                     unsigned start = realPtrs[rss];
                                     unsigned end = realPtrs[rss + 1];
                                     unsigned size = end - start;
@@ -1076,237 +1170,6 @@ namespace BRSBFSKernels
                 for (unsigned i = threadID; i < noWords; i += noThreads)
                 {
                     storeNotCached<unsigned>(&frontierNext[i], 0);
-                }
-            }
-            grid.sync();
-        }
-        if (threadID == 0)
-        {
-            *totalLevels = levelCount;
-        }
-    }
-
-    __global__ void BRSBFS8EnhancedNoMasks4SuperSliceSet(   const unsigned* const __restrict__ noSliceSetsPtr,
-                                                            const unsigned* const __restrict__ sliceSetPtrs,
-                                                            const unsigned* const __restrict__ virtualToReal,
-                                                            const unsigned* const __restrict__ realPtrs,
-                                                            const unsigned* const __restrict__ rowIds,
-                                                            const MASK* const __restrict__ masks,
-                                                            const unsigned* const __restrict__ noWordsPtr,
-                                                            const unsigned* const __restrict__ directionThresholdPtr,
-                                                            // current
-                                                            unsigned* __restrict__ frontier,
-                                                            unsigned* __restrict__ sparseFrontierIds,
-                                                            unsigned* __restrict__ frontierCurrentSizePtr,
-                                                            // next
-                                                            unsigned* __restrict__ frontierNext,
-                                                            unsigned* __restrict__ sparseFrontierNextIds,
-                                                            unsigned* __restrict__ frontierNextSizePtr,
-                                                            //
-                                                            unsigned* const __restrict__ visited,
-                                                            unsigned* const __restrict__ totalLevels,
-                                                            unsigned* const __restrict__ levels,
-                                                            unsigned* const __restrict__ vsetFlags
-                                                            )
-    {
-        // MASK_BITS must be 32 BITS!
-
-        auto warp = coalesced_threads();
-        auto grid = this_grid();
-        const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
-        const unsigned noThreads = gridDim.x * blockDim.x;
-        const unsigned noWarps = noThreads / WARP_SIZE;
-        const unsigned warpID = threadID / WARP_SIZE;
-        const unsigned laneID = threadID % WARP_SIZE;
-
-        const unsigned noWords = *noWordsPtr;
-        const unsigned noSliceSets = *noSliceSetsPtr;
-        const unsigned noVFlags = (noSliceSets + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
-        unsigned levelCount = 0;
-
-        const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
-
-        bool cont = true;
-        while (cont)
-        {
-            ++levelCount;
-            unsigned currentFrontierSize = *frontierCurrentSizePtr;
-            for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
-            {
-                unsigned vset = sparseFrontierIds[i];
-                unsigned rset = virtualToReal[vset];
-                MASK s0;
-                MASK s1;
-                MASK s2;
-                MASK s3;
-                {
-                    MASK f = frontier[rset >> 2];
-                    s0 = f & 0x000000FF;
-                    s1 = ((f & 0x0000FF00) >> 8);
-                    s2 = ((f & 0x00FF0000) >> 16);
-                    s3 = ((f & 0xFF000000) >> 24);
-                }
-
-                unsigned tile = (vset << 5) + laneID; // slice: (vset * 128 + laneID * 4) - tile: slice / 4 = (vset * 32 + laneID)
-                uint4 rows = row4Ids[tile];
-                MASK mask = masks[tile];
-
-                MASK fragA = (mask & 0x0000FFFF);
-                MASK fragB = 0;
-                {
-                    MASK region = laneID / 8;
-                    bool mod0 = laneID % 9 == 0;
-                    bool mod4 = laneID % 9 == 4;
-                    if (mod0 || mod4)
-                    {
-                        switch (region)
-                        {
-                            case 0:
-                            {
-                                fragB = (mod0) ? (s0) : (s0 << 8);
-                                break;
-                            }
-                            case 1:
-                            {
-                                fragB = (mod0) ? (s1) : (s1 << 8);
-                                break;
-                            }
-                            case 2:
-                            {
-                                fragB = (mod0) ? (s2) : (s2 << 8);
-                                break;
-                            }
-                            case 3:
-                            {
-                                fragB = (mod0) ? (s3) : (s3 << 8);
-                            break;
-                            }
-                            default:
-                                break;
-                        }
-                    }
-                }
-                unsigned fragC[2];
-                fragC[0] = fragC[1] = 0;
-                m8n8k128(fragC, fragA, fragB);
-                
-                if (fragC[0])
-                {
-                    unsigned word = rows.x / UNSIGNED_BITS;
-                    unsigned bit = rows.x % UNSIGNED_BITS;
-                    unsigned temp = (1 << bit);
-                    unsigned old = atomicOr(&visited[word], temp);
-                    if ((old & temp) == 0)
-                    {
-                        levels[rows.x] = levelCount;
-                        atomicOr(&frontierNext[word], temp);
-                        unsigned rss = rows.x >> 3;
-                        unsigned vss = realPtrs[rss];
-                        word = vss / UNSIGNED_BITS;
-                        bit = vss % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        old = atomicOr(&vsetFlags[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                            sparseFrontierNextIds[loc] = vss;
-                        }
-                    }
-                }
-                if (fragC[1])
-                {
-                    unsigned word = rows.y / UNSIGNED_BITS;
-                    unsigned bit = rows.y % UNSIGNED_BITS;
-                    unsigned temp = (1 << bit);
-                    unsigned old = atomicOr(&visited[word], temp);
-                    if ((old & temp) == 0)
-                    {
-                        levels[rows.y] = levelCount;
-                        atomicOr(&frontierNext[word], temp);
-                        unsigned rss = rows.y >> 3;
-                        unsigned vss = realPtrs[rss];
-                        word = vss / UNSIGNED_BITS;
-                        bit = vss % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        old = atomicOr(&vsetFlags[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                            sparseFrontierNextIds[loc] = vss;
-                        }
-                    }
-                }
-
-                fragA = ((mask & 0xFFFF0000) >> 16);
-                fragC[0] = fragC[1] = 0;
-                m8n8k128(fragC, fragA, fragB);
-
-                if (fragC[0])
-                {
-                    unsigned word = rows.z / UNSIGNED_BITS;
-                    unsigned bit = rows.z % UNSIGNED_BITS;
-                    unsigned temp = (1 << bit);
-                    unsigned old = atomicOr(&visited[word], temp);
-                    if ((old & temp) == 0)
-                    {
-                        levels[rows.z] = levelCount;
-                        atomicOr(&frontierNext[word], temp);
-                        unsigned rss = rows.z >> 3;
-                        unsigned vss = realPtrs[rss];
-                        word = vss / UNSIGNED_BITS;
-                        bit = vss % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        old = atomicOr(&vsetFlags[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                            sparseFrontierNextIds[loc] = vss;
-                        }
-                    }
-                }
-                if (fragC[1])
-                {
-                    unsigned word = rows.w / UNSIGNED_BITS;
-                    unsigned bit = rows.w % UNSIGNED_BITS;
-                    unsigned temp = (1 << bit);
-                    unsigned old = atomicOr(&visited[word], temp);
-                    if ((old & temp) == 0)
-                    {
-                        levels[rows.w] = levelCount;
-                        atomicOr(&frontierNext[word], temp);
-                        unsigned rss = rows.w >> 3;
-                        unsigned vss = realPtrs[rss];
-                        word = vss / UNSIGNED_BITS;
-                        bit = vss % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        old = atomicOr(&vsetFlags[word], temp);
-                        if ((old & temp) == 0)
-                        {
-                            unsigned loc = atomicAdd(frontierNextSizePtr, 1);
-                            sparseFrontierNextIds[loc] = vss;
-                        }
-                    }
-                }
-            }
-            grid.sync();
-            cont = (*frontierNextSizePtr != 0);
-            swap<unsigned>(frontier, frontierNext);
-            swap<unsigned>(sparseFrontierIds, sparseFrontierNextIds);
-            swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
-            grid.sync();
-            if (threadID == 0)
-            {
-                *frontierNextSizePtr = 0;
-            }
-            if (cont)
-            {
-                for (unsigned i = threadID; i < noWords; i += noThreads)
-                {
-                    frontierNext[i] = 0;
-                }
-                for (unsigned i = threadID; i < noVFlags; i += noThreads)
-                {
-                    vsetFlags[i] = 0;
                 }
             }
             grid.sync();

@@ -131,14 +131,14 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		m_Rows[iter] = nnzs[iter].first;
 	}
 
-	double averageDegree = 0;
+	m_AverageDegree = 0;
 	for (unsigned j = 0; j < m_N; ++j)
 	{
 		m_ColPtrs[j + 1] += m_ColPtrs[j];
-		averageDegree += m_ColPtrs[j + 1] - m_ColPtrs[j];
+		m_AverageDegree += m_ColPtrs[j + 1] - m_ColPtrs[j];
 	}
-	averageDegree /= m_N;
-	std::cout << "Average degree: " << averageDegree << std::endl;
+	m_AverageDegree /= m_N;
+	std::cout << "Average degree: " << m_AverageDegree << std::endl;
 	//
 
 	// transpose

@@ -63,8 +63,8 @@ void Benchmark::main()
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
         {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
-        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
         {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
+        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
         {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/com-LiveJournal.mtx", "/arf/scratch/delbek/com-LiveJournal.txt", true, true},
         {"/arf/scratch/delbek/amazon-2008.mtx", "/arf/scratch/delbek/amazon-2008.txt", false, true},
@@ -91,8 +91,10 @@ double Benchmark::runBRS(const Matrix& matrix)
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
 
     unsigned* inversePermutation = nullptr;
+    /*
     if (csc->checkSymmetry()) inversePermutation = csc->rcm();
     else inversePermutation = csc->gorderWithJackard(sliceSize);
+    */
 
     std::ofstream file(matrix.filename + ".csv");
     BRS* brs = new BRS(sliceSize, fullPadding, file);

@@ -239,16 +239,17 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
     }
     std::vector<VSet> vsets;
-    for (unsigned i = 0; i < rsets.size(); ++i)
+    for (unsigned rset = 0; rset < rsets.size(); ++rset)
     {
-        for (auto& vset: rsets[i])
+        for (auto& vset: rsets[rset])
         {
             vsets.emplace_back(std::move(vset));
         }
     }
     rsets.clear();
+    m_NoVirtualSliceSets = vsets.size();
 
-    stats /= vsets.size();
+    stats /= m_NoVirtualSliceSets;
     std::cout << "Average buckets per mask: " << stats.averageBucketPerMask << std::endl;
     std::cout << "Average buckets per warp: " << stats.averageBucketPerWarp << std::endl;
     std::cout << "Average bucket range per mask: " << stats.averageBucketRangeMask << std::endl;
@@ -256,7 +257,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
     std::fill(m_RealPtrs, m_RealPtrs + m_NoRealSliceSets + 1, 0);
-    for (unsigned vset = 0; vset < vsets.size(); ++vset)
+    for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         unsigned rset = vsets[vset].rsets.front();
         ++m_RealPtrs[rset + 1];
@@ -265,13 +266,12 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     {
         m_RealPtrs[rset + 1] += m_RealPtrs[rset];
     }
-    m_NoVirtualSliceSets = vsets.size();
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
     m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
     
     m_SliceSetPtrs[0] = 0;
-    for (unsigned vset = 0; vset < vsets.size(); ++vset)
+    for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         m_SliceSetPtrs[vset + 1] = m_SliceSetPtrs[vset] + vsets[vset].rows.size();
         m_VirtualToReal[vset] = vsets[vset].rsets.front();
@@ -280,7 +280,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     m_RowIds = new unsigned[m_NoSlices];
     unsigned idx = 0;
-    for (unsigned vset = 0; vset < vsets.size(); ++vset)
+    for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         for (unsigned i = 0; i < vsets[vset].rows.size(); ++i)
         {
@@ -290,7 +290,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     m_Masks = new MASK[(m_NoSlices / noMasks)];
     idx = 0;
-    for (unsigned vset = 0; vset < vsets.size(); ++vset)
+    for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         for (unsigned i = 0; i < vsets[vset].masks.size(); ++i)
         {
