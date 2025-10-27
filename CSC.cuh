@@ -50,6 +50,7 @@ public:
 	unsigned* rcm();
 	//
 	void applyPermutation(unsigned* inversePermutation);
+	bool permutationCheck(unsigned* inversePermutation);
 
 private:
 	unsigned m_N;
@@ -251,7 +252,6 @@ unsigned* CSC::random()
 unsigned* CSC::jackard(unsigned sliceSize)
 {
 	unsigned* inversePermutation = new unsigned[m_N];
-
 	std::vector<bool> permuted(m_N, false);
 
 	std::vector<unsigned> rowMark(m_N, 0);
@@ -281,6 +281,23 @@ unsigned* CSC::jackard(unsigned sliceSize)
 		}
 	};
 
+	std::vector<std::pair<unsigned, unsigned>> degreesSorted(m_N);
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		degreesSorted[j] = std::pair<unsigned, unsigned>(m_ColPtrs[j + 1] - m_ColPtrs[j], j);
+	}
+	std::sort(degreesSorted.begin(), degreesSorted.end(), [](const auto& a, const auto& b) 
+	{
+		if (a.first == b.first)
+		{
+			return a.second > b.second;
+		}
+		else
+		{
+			return a.first > b.first;
+		}
+	});
+
 	unsigned noSliceSets = (m_N + sliceSize - 1) / sliceSize;
 	for (unsigned sliceSet = 0; sliceSet < noSliceSets; ++sliceSet)
 	{
@@ -289,29 +306,32 @@ unsigned* CSC::jackard(unsigned sliceSize)
 		unsigned sliceStart = sliceSet * sliceSize;
 		unsigned sliceEnd = std::min(sliceStart + sliceSize, m_N);
 
-		unsigned highestDegree = 0;
 		unsigned col = UNSIGNED_MAX;
-		for (unsigned j = 0; j < m_N; ++j)
+		for (unsigned p = 0; p < m_N; ++p)
 		{
-			if (!permuted[j])
-			{
-				unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
-				if (deg >= highestDegree)
-				{
-					highestDegree = deg;
-					col = j;
-				}
-			}
+			const auto& pair = degreesSorted[p];
+			if (permuted[pair.second]) continue;
+			col = pair.second;
 		}
 		if (col == UNSIGNED_MAX) break;
 
-		for (unsigned nnz = m_ColPtrs[col]; nnz < m_ColPtrs[col + 1]; ++nnz)
-		{
-			unsigned r = m_Rows[nnz];
-			markRow(r);
-		}
 		inversePermutation[col] = sliceStart;
 		permuted[col] = true;
+
+		std::vector<unsigned> cols;
+		for (unsigned colnnz = m_ColPtrs[col]; colnnz < m_ColPtrs[col + 1]; ++colnnz)
+		{
+			unsigned i = m_Rows[colnnz];
+			markRow(i);
+			for (unsigned rownnz = m_Transpose->m_ColPtrs[i]; rownnz < m_Transpose->m_ColPtrs[i + 1]; ++rownnz)
+			{
+				unsigned j = m_Transpose->m_Rows[rownnz];
+				if (!permuted[j])
+				{
+					cols.emplace_back(j);
+				}
+			}
+		}
 
 		for (unsigned newCol = sliceStart + 1; newCol < sliceEnd; ++newCol)
 		{
@@ -319,13 +339,13 @@ unsigned* CSC::jackard(unsigned sliceSize)
 			unsigned bestCol;
 			#pragma omp parallel num_threads(omp_get_max_threads())
 			{
-				double myBest = -1;
-				unsigned myCol;
-				#pragma omp for schedule(static)
-				for (unsigned j = 0; j < m_N; ++j)
+				double myBestJackard = -1;
+				unsigned myBestCol;
+				#pragma omp parallel for
+				for (const auto& j: cols)
 				{
 					if (permuted[j]) continue;
-	
+		
 					unsigned inter = 0;
 					for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
 					{
@@ -333,32 +353,49 @@ unsigned* CSC::jackard(unsigned sliceSize)
 					}
 					unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
 					unsigned uni = unionSize + deg - inter;
-					double currentJackard = (uni == 0) ? 1 : static_cast<double>(inter) / static_cast<double>(uni);
-	
-					if (currentJackard > myBest)
+					double currentJackard = (uni == 0) ? 1 : static_cast<double>(inter) / static_cast<double>(uni); // [0, 1]: 1 full overlap, 0 no overlap
+
+					if (currentJackard > myBestJackard)
 					{
-						myBest = currentJackard;
-						myCol = j;
+						myBestJackard = currentJackard;
+						myBestCol = j;
 					}
 				}
 				#pragma omp critical
 				{
-					if (myBest > bestJackard)
+					if (myBestJackard > bestJackard)
 					{
-						bestJackard = myBest;
-						bestCol = myCol;
+						bestJackard = myBestJackard;
+						bestCol = myBestCol;
 					}
 				}
 			}
-			if (bestJackard == -1) break;
-
-			for (unsigned nnz = m_ColPtrs[bestCol]; nnz < m_ColPtrs[bestCol + 1]; ++nnz)
+			if (bestJackard == -1) 
 			{
-				unsigned r = m_Rows[nnz];
-				markRow(r);
+				for (unsigned p = 0; p < m_N; ++p)
+				{
+					const auto& pair = degreesSorted[p];
+					if (permuted[pair.second]) continue;
+					bestCol = pair.second;
+				}
 			}
+
 			inversePermutation[bestCol] = newCol;
 			permuted[bestCol] = true;
+
+			for (unsigned colnnz = m_ColPtrs[bestCol]; colnnz < m_ColPtrs[bestCol + 1]; ++colnnz)
+			{
+				unsigned i = m_Rows[colnnz];
+				markRow(i);
+				for (unsigned rownnz = m_Transpose->m_ColPtrs[i]; rownnz < m_Transpose->m_ColPtrs[i + 1]; ++rownnz)
+				{
+					unsigned j = m_Transpose->m_Rows[rownnz];
+					if (!permuted[j])
+					{
+						cols.emplace_back(j);
+					}
+				}
+			}
 		}
 	}
 	applyPermutation(inversePermutation);
@@ -770,6 +807,11 @@ CSC* CSC::symmetrize()
 
 void CSC::applyPermutation(unsigned* inversePermutation)
 {
+	if (!permutationCheck(inversePermutation))
+	{
+		throw std::runtime_error("Permutation check has failed.");
+	}
+
 	unsigned* newColPtrs = new unsigned[m_N + 1];
 	std::fill(newColPtrs, newColPtrs + m_N + 1, 0);
 
@@ -810,4 +852,23 @@ void CSC::applyPermutation(unsigned* inversePermutation)
 
 	m_ColPtrs = newColPtrs;
 	m_Rows = newRows;
+}
+
+bool CSC::permutationCheck(unsigned* inversePermutation)
+{
+	bool* check = new bool[m_N];
+	std::fill(check, check + m_N, false);
+
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		if (check[inversePermutation[j]] == true) return false;
+		check[inversePermutation[j]] = true;
+	}
+	for (unsigned j = 0; j < m_N; ++j) // unnecessary but whatever
+	{
+		if (check[j] == false) return false;
+	}
+	delete[] check;
+	
+	return true;
 }

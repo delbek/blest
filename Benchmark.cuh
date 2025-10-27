@@ -58,8 +58,8 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
+        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
         {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
@@ -90,7 +90,7 @@ double Benchmark::runBRS(const Matrix& matrix)
 
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
 
-    unsigned* inversePermutation = nullptr;
+    unsigned* inversePermutation = csc->jackard(sliceSize);
     /*
     if (csc->checkSymmetry()) inversePermutation = csc->rcm();
     else inversePermutation = csc->gorderWithJackard(sliceSize);
