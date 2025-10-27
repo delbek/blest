@@ -342,8 +342,9 @@ unsigned* CSC::jackard(unsigned sliceSize)
 				double myBestJackard = -1;
 				unsigned myBestCol;
 				#pragma omp parallel for
-				for (const auto& j: cols)
+				for (unsigned idx = 0; idx < cols.size(); ++idx)
 				{
+					unsigned j = cols[idx];
 					if (permuted[j]) continue;
 		
 					unsigned inter = 0;
