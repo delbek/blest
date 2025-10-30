@@ -17,6 +17,7 @@ constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 constexpr unsigned UNSIGNED_BITS = sizeof(unsigned) * 8;
 #define WARP_SIZE 32
 #define UNSIGNED_MAX 4294967295U
+#define FUSE_THRESHOLD 4
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)

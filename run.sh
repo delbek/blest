@@ -7,7 +7,7 @@
 #SBATCH --partition=kolyoz-cuda
 #SBATCH --gres=gpu:1
 #SBATCH -C H100
-#SBATCH --time=0-12:00:00
+#SBATCH --time=0-01:00:00
 #SBATCH --output=/arf/home/delbek/sutensor/res/out-%j.out
 #SBATCH --error=/arf/home/delbek/sutensor/res/out-%j.err
 #SBATCH --export=NONE
@@ -32,15 +32,9 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-module load lib/cuda/12.4
+module load lib/cuda/13.0
 if [ $? -ne 0 ]; then
-  echo "Failed to load lib/cuda/12.4"
-  exit 1
-fi
-
-module load comp/nvhpc/nvhpc-25.3
-if [ $? -ne 0 ]; then
-  echo "Failed to load comp/nvhpc/nvhpc-25.3"
+  echo "Failed to load lib/cuda/13.0"
   exit 1
 fi
 

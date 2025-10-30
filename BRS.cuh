@@ -79,7 +79,6 @@ public:
 
 private:
     VSetStatistics distributeSlices(unsigned rset, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, std::vector<VSet>& vsets);
-    void formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset);
     VSetStatistics computeVSetStatistics(const VSet& vset);
 
 private:
@@ -196,7 +195,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 i = nextRow;
             }
 
-            if (csc->averageDegree() < 4)
+            if (csc->averageDegree() < FUSE_THRESHOLD)
             {
                 std::vector<std::pair<unsigned, MASK>> nextAdditionals;
                 for (unsigned level = 1; level < LEVELS_TO_FUSE; ++level)
@@ -389,39 +388,6 @@ BRS::VSetStatistics BRS::distributeSlices(unsigned rset, std::vector<unsigned>& 
     }
 
     return stats;
-}
-
-void BRS::formSuperVSet4(unsigned targetRegion, std::vector<unsigned>& tempRowIds, std::vector<MASK>& tempMasks, VSet& vset)
-{
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned regionThreadSize = WARP_SIZE / 4;
-
-    for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
-    {
-        unsigned region = (thread % 4);
-        if (region != targetRegion)
-        {
-            continue;
-        }
-        unsigned regionThreadId = thread / 4;
-        MASK cumulative = 0;
-        unsigned cumulativeCounter = 0;
-        for (unsigned mask = 0; mask < noMasks; ++mask)
-        {
-            unsigned current = mask * regionThreadSize + regionThreadId;
-            if (current < tempRowIds.size())
-            {
-                vset.rows[thread * noMasks + mask] = tempRowIds[current];
-                cumulative |= (tempMasks[current] << (m_SliceSize * cumulativeCounter++));
-            }
-            else
-            {
-                vset.rows[thread * noMasks + mask] = 0;
-                ++cumulativeCounter;
-            }
-        }
-        vset.masks[thread] = cumulative;
-    }
 }
 
 BRS::VSetStatistics BRS::computeVSetStatistics(const VSet& vset)
