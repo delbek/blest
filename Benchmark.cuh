@@ -3,6 +3,7 @@
 #include "CSC.cuh"
 #include "BRS.cuh"
 #include "BRSBFSKernel.cuh"
+#include <filesystem>
 
 struct Matrix
 {
@@ -58,22 +59,20 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false}
-        /*
+        {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
         {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
         {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
+        {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
-        {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
         {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
-        {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/com-LiveJournal.mtx", "/arf/scratch/delbek/com-LiveJournal.txt", true, true},
         {"/arf/scratch/delbek/amazon-2008.mtx", "/arf/scratch/delbek/amazon-2008.txt", false, true},
+        {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
         {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
         {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
         {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
-        */
     };
 
     for (const auto& matrix: matrices)
@@ -100,7 +99,17 @@ double Benchmark::runBRS(const Matrix& matrix)
 
     std::ofstream file(matrix.filename + ".csv");
     BRS* brs = new BRS(sliceSize, fullPadding, file);
-    brs->constructFromCSCMatrix(csc);
+
+    std::string binaryName = matrix.filename + "_natural.bin";
+    if (!std::filesystem::exists(std::filesystem::path(binaryName)))
+    {
+        brs->constructFromCSCMatrix(csc);
+        brs->saveToBinary(binaryName);
+    }
+    else
+    {
+        brs->constructFromBinary(binaryName);
+    }
     BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
 
     if (inversePermutation == nullptr)

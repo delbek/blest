@@ -827,7 +827,7 @@ namespace BRSBFSKernels
                                                 unsigned* __restrict__ sparseFrontierIds,
                                                 unsigned* __restrict__ frontierCurrentSizePtr,
                                                 // next
-                                                unsigned* __restrict__ visitedNext,
+                                                unsigned* const __restrict__ visitedNext,
                                                 unsigned* __restrict__ sparseFrontierNextIds,
                                                 unsigned* __restrict__ frontierNextSizePtr,
                                                 //
@@ -851,6 +851,7 @@ namespace BRSBFSKernels
         unsigned levelCount = 0;
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
+        const unsigned char* frontierSlice = reinterpret_cast<const unsigned char*>(frontier);
 
         bool cont = true;
         while (cont)
@@ -867,8 +868,7 @@ namespace BRSBFSKernels
                     unsigned tileStart = sliceSetPtrs[vset] >> 2;
                     unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
 
-                    unsigned shift = (rset % 4) << 3;
-                    MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
+                    MASK origFragB = frontierSlice[rset];
 
                     unsigned tile = tileStart + laneID;
                     uint4 rows = {0, 0, 0, 0};
@@ -938,12 +938,11 @@ namespace BRSBFSKernels
                 for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
                 {
                     unsigned rset = virtualToReal[vset];
-                    unsigned shift = (rset % 4) << 3;
-                    MASK origFragB = ((frontier[rset >> 2] >> shift) & 0x000000FF);
+                    unsigned char origFragB = frontierSlice[rset];
                     if (origFragB)
                     {
-                        unsigned tileStart = sliceSetPtrs[vset] >> 2;
-                        unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
+                        unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                        unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
 
                         unsigned tile = tileStart + laneID;
                         uint4 rows = {0, 0, 0, 0};
@@ -960,11 +959,11 @@ namespace BRSBFSKernels
                             unsigned res = laneID % 9;
                             if (res == 0)
                             {
-                                fragB = origFragB;
+                                fragB = static_cast<MASK>(origFragB);
                             }
                             else if (res == 4)
                             {
-                                fragB = origFragB << 8;
+                                fragB = static_cast<MASK>(origFragB) << 8;
                             }
                         }
                         unsigned fragC[4];
@@ -1010,13 +1009,14 @@ namespace BRSBFSKernels
                 }
             }
             grid.sync();
-            for (unsigned i = threadID; i < noWords; i += noThreads)
+            for (int i = noWords - threadID - 1; i >= 0; i -= noThreads)
             {
-                unsigned diff = visited[i] ^ visitedNext[i];
+                unsigned next = visitedNext[i];
+                unsigned diff = visited[i] ^ next;
                 unsigned rssOffset = i << 2;
                 if (diff != 0)
                 {
-                    visited[i] = visitedNext[i];
+                    visited[i] = next;
                     frontier[i] = diff;
                     #pragma unroll 4
                     for (unsigned set = 0; set < 4; ++set)
@@ -1038,16 +1038,17 @@ namespace BRSBFSKernels
                                 if (lane >= stride) scan += from;
                             }
                             
-                            unsigned base = 0;
+                            unsigned base;
                             if (lane == warp.size() - 1)
                             {
                                 base = atomicAdd(frontierNextSizePtr, scan);
                             }
                             base = warp.shfl(base, warp.size() - 1);
-
+                            scan = warp.shfl_up(scan, 1);
+                            if (lane == 0) scan = 0; // perhaps iterating backwards is just fine without shuffling
                             for (unsigned vset = start; vset < end; ++vset)
                             {
-                                sparseFrontierNextIds[base + --scan] = vset;
+                                sparseFrontierNextIds[base + scan++] = vset;
                             }
                         }
                     }
@@ -1105,7 +1106,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* realPtrs = brs->getRealPtrs();
     unsigned* rowIds = brs->getRowIds();
     MASK* masks = brs->getMasks();
-    const unsigned DIRECTION_THRESHOLD = noSliceSets / 2; // vset- or rset- based?
+    const unsigned DIRECTION_THRESHOLD = noSliceSets * DIRECTION_SWITCHING_CONSTANT; // vset- or rset- based?
 
     BFSResult result;
     result.levels = new unsigned[n];
@@ -1144,6 +1145,12 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     {
         throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
     }
+
+    cudaFuncSetAttribute(
+    kernelPtr,
+    cudaFuncAttributePreferredSharedMemoryCarveout,
+    0
+    );
 
     int gridSize, blockSize;
     gpuErrchk(cudaOccupancyMaxPotentialBlockSizeVariableSMem(

@@ -9,15 +9,16 @@
 #include <type_traits>
 using namespace cooperative_groups;
 
+#define ROAD_NETWORK_DEGREE 4
+#define DIRECTION_SWITCHING_CONSTANT 1
+
 #define M 8
 #define K 128
 #define MASK unsigned
-#define LEVELS_TO_FUSE 10
 constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 constexpr unsigned UNSIGNED_BITS = sizeof(unsigned) * 8;
 #define WARP_SIZE 32
-#define UNSIGNED_MAX 4294967295U
-#define FUSE_THRESHOLD 4
+#define UNSIGNED_MAX 4294967295
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -46,6 +47,31 @@ __device__ __forceinline__ void storeNotCached(T* ptr, const T& val)
 {
     static_assert(sizeof(T) == 4);
     asm volatile("st.global.wt.b32 [%0], %1;" :: "l"(ptr), "r"(val) : "memory");
+}
+
+template <class T>
+__device__ __forceinline__ void storeEvictFirst(T* ptr, const T& val)
+{
+    static_assert(sizeof(T) == 4);
+    asm volatile("st.global.L1::evict_first.b32 [%0], %1;" :: "l"(ptr), "r"(val) : "memory");
+}
+
+template <class T>
+__device__ __forceinline__ T loadNotCached(const T* ptr)
+{
+    static_assert(sizeof(T) == 4);
+    T val;
+    asm volatile("ld.global.cg.b32 %0, [%1];" : "=r"(val) : "l"(ptr) : "memory");
+    return val;
+}
+
+template <class T>
+__device__ __forceinline__ T loadEvictFirst(const T* ptr)
+{
+    static_assert(sizeof(T) == 4);
+    T val;
+    asm volatile("ld.global.L1::evict_first.b32 %0, [%1];" : "=r"(val) : "l"(ptr) : "memory");
+    return val;
 }
 
 template <class T>

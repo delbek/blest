@@ -60,6 +60,8 @@ public:
     virtual ~BRS();
 
     void constructFromCSCMatrix(CSC* csc);
+    void constructFromBinary(std::string filename);
+    void saveToBinary(std::string filename);
     void printBRSData();
     void brsAnalysis();
     void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time, SliceSetInformation* rsetInformation, SliceSetInformation* vsetInformation, SliceInformation* sliceInformation);
@@ -133,6 +135,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         throw std::runtime_error("Invalid slice size provided.");
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
+    unsigned fullWork = WARP_SIZE * noMasks;
 
     VSetStatistics stats;
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
@@ -195,31 +198,43 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 i = nextRow;
             }
 
-            if (csc->averageDegree() < FUSE_THRESHOLD)
+            unsigned noComplete = (realSet.size() / fullWork) * fullWork;
+            unsigned left = (fullWork - (realSet.size() - noComplete));
+            unsigned added = 0;
+
+            if ((csc->averageDegree() < ROAD_NETWORK_DEGREE) && (left != 0))
             {
-                std::vector<std::pair<unsigned, MASK>> nextAdditionals;
-                for (unsigned level = 1; level < LEVELS_TO_FUSE; ++level)
+                while (true)
                 {
-                    if (realSet.size() > 80)
+                    std::vector<std::pair<unsigned, MASK>> next;
+                    bool progressed = false;
+
+                    for (const auto& add: additionals)
                     {
-                        break;
-                    }
-                    for (const auto& additional: additionals)
-                    {
-                        unsigned j = additional.first;
+                        const unsigned j = add.first;
                         for (unsigned ptr = colPtrs[j]; ptr < colPtrs[j + 1]; ++ptr)
                         {
-                            unsigned i = rows[ptr];
+                            const unsigned i = rows[ptr];
                             if (realSet.contains(i)) continue;
-                            realSet[i] = additional.second;
-                            nextAdditionals.emplace_back(i, additional.second);
+
+                            realSet[i] = add.second;
+                            next.emplace_back(i, add.second);
+                            progressed = true;
+                            ++added;
+
+                            if (added == left)
+                            {
+                                goto end;
+                            }
                         }
                     }
-                    additionals = std::move(nextAdditionals);
-                    nextAdditionals.clear();
+                    if (!progressed) break;
+
+                    additionals.swap(next);
                 }
             }
 
+        end:
             std::vector<unsigned> tempRowIds;
             tempRowIds.reserve(realSet.size());
             std::vector<MASK> tempMasks;
@@ -296,6 +311,66 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             m_Masks[idx++] = vsets[vset].masks[i];
         }
     }
+
+    this->printBRSData();
+    this->brsAnalysis();
+}
+
+void BRS::saveToBinary(std::string filename)
+{
+    std::ofstream out(filename, std::ios::binary);
+
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+
+    out.write(reinterpret_cast<const char*>(&m_N), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_SliceSize), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_NoRealSliceSets), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_NoVirtualSliceSets), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_NoSlices), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_IsFullPadding), (sizeof(bool)));
+    out.write(reinterpret_cast<const char*>(&m_NoPaddedSlices), (sizeof(unsigned)));
+
+    out.write(reinterpret_cast<const char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
+    out.write(reinterpret_cast<const char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
+    out.write(reinterpret_cast<const char*>(m_RealPtrs), (sizeof(unsigned) * (m_NoRealSliceSets + 1)));
+    out.write(reinterpret_cast<const char*>(m_RowIds), (sizeof(unsigned) * m_NoSlices));
+    out.write(reinterpret_cast<const char*>(m_Masks), (sizeof(unsigned) * (m_NoSlices / noMasks)));
+
+    out.close();
+}
+
+void BRS::constructFromBinary(std::string filename)
+{
+    std::ifstream in(filename, std::ios::binary);
+
+    in.read(reinterpret_cast<char*>(&m_N), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_SliceSize), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_NoRealSliceSets), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_NoVirtualSliceSets), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_NoSlices), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_IsFullPadding), sizeof(bool));
+    in.read(reinterpret_cast<char*>(&m_NoPaddedSlices), sizeof(unsigned));
+
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+
+    m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
+    in.read(reinterpret_cast<char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
+
+    m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
+    in.read(reinterpret_cast<char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
+
+    m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
+    in.read(reinterpret_cast<char*>(m_RealPtrs), (sizeof(unsigned) * (m_NoRealSliceSets + 1)));
+
+    m_RowIds = new unsigned[m_NoSlices];
+    in.read(reinterpret_cast<char*>(m_RowIds), (sizeof(unsigned) * m_NoSlices));
+
+    m_Masks = new unsigned[m_NoSlices / noMasks];
+    in.read(reinterpret_cast<char*>(m_Masks), (sizeof(unsigned) * (m_NoSlices / noMasks)));
+
+    in.close();
+
+    std::cout << "BRS read from binary." << std::endl;
 
     this->printBRSData();
     this->brsAnalysis();
