@@ -32,6 +32,7 @@ public:
 	[[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
 	[[nodiscard]] inline unsigned*& getRows() {return m_Rows;}
 	[[nodiscard]] inline double& averageDegree() {return m_AverageDegree;}
+	[[nodiscard]] inline bool isRoadNetwork() {return this->averageDegree() < ROAD_NETWORK_DEGREE;}
 
 	// metrics
 	unsigned maxBandwidth();

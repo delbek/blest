@@ -202,7 +202,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             unsigned left = (fullWork - (realSet.size() - noComplete));
             unsigned added = 0;
 
-            if ((csc->averageDegree() < ROAD_NETWORK_DEGREE) && (left != 0))
+            if ((csc->isRoadNetwork()) && (left != 0))
             {
                 while (true)
                 {

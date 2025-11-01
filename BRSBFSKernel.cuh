@@ -819,21 +819,21 @@ namespace BRSBFSKernels
                                                 const unsigned* const __restrict__ virtualToReal,
                                                 const unsigned* const __restrict__ realPtrs,
                                                 const unsigned* const __restrict__ rowIds,
-                                                const MASK* const __restrict__ masks,
+                                                const MASK*     const __restrict__ masks,
                                                 const unsigned* const __restrict__ noWordsPtr,
                                                 const unsigned* const __restrict__ directionThresholdPtr,
                                                 // current
-                                                unsigned* __restrict__ frontier,
-                                                unsigned* __restrict__ sparseFrontierIds,
-                                                unsigned* __restrict__ frontierCurrentSizePtr,
+                                                unsigned*       const __restrict__ frontier,
+                                                unsigned*             __restrict__ sparseFrontierIds,
+                                                unsigned*             __restrict__ frontierCurrentSizePtr,
                                                 // next
-                                                unsigned* const __restrict__ visitedNext,
-                                                unsigned* __restrict__ sparseFrontierNextIds,
-                                                unsigned* __restrict__ frontierNextSizePtr,
+                                                unsigned*       const __restrict__ visitedNext,
+                                                unsigned*             __restrict__ sparseFrontierNextIds,
+                                                unsigned*             __restrict__ frontierNextSizePtr,
                                                 //
-                                                unsigned* const __restrict__ visited,
-                                                unsigned* const __restrict__ totalLevels,
-                                                unsigned* const __restrict__ levels
+                                                unsigned*       const __restrict__ visited,
+                                                unsigned*       const __restrict__ totalLevels,
+                                                unsigned*       const __restrict__ levels
                                                 )
     {
         // MASK_BITS must be 32 BITS!
@@ -851,7 +851,9 @@ namespace BRSBFSKernels
         unsigned levelCount = 0;
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
-        const unsigned char* frontierSlice = reinterpret_cast<const unsigned char*>(frontier);
+        unsigned char* const frontierSlice = reinterpret_cast<unsigned char* const>(frontier);
+
+        unsigned fragC[4];
 
         bool cont = true;
         while (cont)
@@ -863,12 +865,11 @@ namespace BRSBFSKernels
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
                     unsigned vset = sparseFrontierIds[i];
-                    unsigned rset = virtualToReal[vset];
                     
-                    unsigned tileStart = sliceSetPtrs[vset] >> 2;
-                    unsigned tileEnd = sliceSetPtrs[vset + 1] >> 2;
+                    unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                    unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
 
-                    MASK origFragB = frontierSlice[rset];
+                    unsigned rset = virtualToReal[vset];
 
                     unsigned tile = tileStart + laneID;
                     uint4 rows = {0, 0, 0, 0};
@@ -879,7 +880,7 @@ namespace BRSBFSKernels
                         mask = masks[tile];
                     }
 
-                    MASK fragA = (mask & 0x0000FFFF);
+                    MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
                     MASK fragB = 0;
                     {
                         unsigned res = laneID % 9;
@@ -892,12 +893,12 @@ namespace BRSBFSKernels
                             fragB = origFragB << 8;
                         }
                     }
-                    unsigned fragC[4];
                     fragC[0] = fragC[1] = 0;
+                    MASK fragA = (mask & 0x0000FFFF);
                     m8n8k128(fragC, fragA, fragB);
 
-                    fragA = ((mask & 0xFFFF0000) >> 16);
                     fragC[2] = fragC[3] = 0;
+                    fragA = ((mask & 0xFFFF0000) >> 16);
                     m8n8k128(&fragC[2], fragA, fragB);
 
                     unsigned word = rows.x / UNSIGNED_BITS;
@@ -938,7 +939,7 @@ namespace BRSBFSKernels
                 for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
                 {
                     unsigned rset = virtualToReal[vset];
-                    unsigned char origFragB = frontierSlice[rset];
+                    MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
                     if (origFragB)
                     {
                         unsigned tileStart = (sliceSetPtrs[vset] >> 2);
@@ -953,25 +954,24 @@ namespace BRSBFSKernels
                             mask = masks[tile];
                         }
 
-                        MASK fragA = (mask & 0x0000FFFF);
                         MASK fragB = 0;
                         {
                             unsigned res = laneID % 9;
                             if (res == 0)
                             {
-                                fragB = static_cast<MASK>(origFragB);
+                                fragB = origFragB;
                             }
                             else if (res == 4)
                             {
-                                fragB = static_cast<MASK>(origFragB) << 8;
+                                fragB = (origFragB << 8);
                             }
                         }
-                        unsigned fragC[4];
                         fragC[0] = fragC[1] = 0;
+                        MASK fragA = (mask & 0x0000FFFF);
                         m8n8k128(fragC, fragA, fragB);
 
-                        fragA = ((mask & 0xFFFF0000) >> 16);
                         fragC[2] = fragC[3] = 0;
+                        fragA = ((mask & 0xFFFF0000) >> 16);
                         m8n8k128(&fragC[2], fragA, fragB);
 
                         unsigned word = rows.x / UNSIGNED_BITS;
@@ -1118,19 +1118,9 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
         return 0;
     };
 
-    void* kernelPtr = nullptr;
-    if (sliceSize == 8 && noMasks == 2)
-    {
-        if (isFullPadding)
-        {
-            kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks2FullPad;
-        }
-        else
-        {
-            kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks2;
-        }
-    }
-    else if (sliceSize == 8 && noMasks == 4)
+    void* kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks4;
+    /*
+    if (sliceSize == 8 && noMasks == 4)
     {
         if (isFullPadding)
         {
@@ -1145,6 +1135,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     {
         throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
     }
+    */
 
     cudaFuncSetAttribute(
     kernelPtr,
