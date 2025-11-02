@@ -60,15 +60,13 @@ void Benchmark::main()
     std::vector<Matrix> matrices = 
     {
         {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
+        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
         {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
-        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
-        {"/arf/scratch/delbek/com-LiveJournal.mtx", "/arf/scratch/delbek/com-LiveJournal.txt", true, true},
-        {"/arf/scratch/delbek/amazon-2008.mtx", "/arf/scratch/delbek/amazon-2008.txt", false, true},
+        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
         {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
         {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
@@ -86,16 +84,17 @@ void Benchmark::main()
 
 double Benchmark::runBRS(const Matrix& matrix)
 {
+    unsigned sliceSize = 8;
+
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
 
-    unsigned* inversePermutation = nullptr;
+    unsigned* inversePermutation = csc->gorderWithJackard(sliceSize);
     /*
     if (csc->checkSymmetry()) inversePermutation = csc->rcm();
     else inversePermutation = csc->gorderWithJackard(sliceSize);
     */
 
     std::ofstream file(matrix.filename + ".csv");
-    unsigned sliceSize = 8;
     bool fullPadding;
     std::string binaryName;
     if (csc->isRoadNetwork())

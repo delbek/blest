@@ -8,5 +8,4 @@ res/
 *.err
 berrybees-master/
 *.ncu-rep
-METIS
-GKlib
+*.mtx.csv

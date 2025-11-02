@@ -42,7 +42,6 @@ public:
 	// orderings
 	unsigned* random();
 	unsigned* jackard(unsigned sliceSize);
-	unsigned* gorder(unsigned windowSize);
 	unsigned* gorderWithJackard(unsigned sliceSize);
 	unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
 	unsigned* degreeSort(bool ascending = true);
@@ -88,6 +87,7 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	for (unsigned iter = 0; iter < noLines; ++iter)
 	{
 		file >> j >> i; // read transpose
+		if (i == j) continue; 
 		if (!binary) file >> trash;
 
 		--i;
@@ -402,23 +402,6 @@ unsigned* CSC::jackard(unsigned sliceSize)
 			}
 		}
 	}
-	applyPermutation(inversePermutation);
-
-	return inversePermutation;
-}
-
-unsigned* CSC::gorder(unsigned windowSize)
-{
-	Gorder::Graph g;
-	g.setFilename("gorder");
-	g.readGraph(m_N, m_NNZ, m_ColPtrs, m_Rows);
-	g.Transform();
-	std::vector<int> order;
-	g.GorderGreedy(order, windowSize);
-
-	unsigned* inversePermutation = new unsigned[m_N];
-	std::copy(order.data(), order.data() + m_N, inversePermutation);
-
 	applyPermutation(inversePermutation);
 
 	return inversePermutation;
