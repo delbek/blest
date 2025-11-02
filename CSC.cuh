@@ -9,7 +9,6 @@
 #include <random>
 #include <unordered_map>
 #include <numeric>
-#include <metis.h>
 #include <stdexcept>
 
 // Gorder
@@ -46,8 +45,7 @@ public:
 	unsigned* gorder(unsigned windowSize);
 	unsigned* gorderWithJackard(unsigned sliceSize);
 	unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
-	unsigned* degreeSort();
-	unsigned* partition(idx_t parts);
+	unsigned* degreeSort(bool ascending = true);
 	bool checkSymmetry();
 	CSC* symmetrize();
 	// symmetric ones
@@ -561,7 +559,7 @@ unsigned* CSC::jackardWithWindow(unsigned sliceSize, unsigned windowSize)
 	return inversePermutation;
 }
 
-unsigned* CSC::degreeSort()
+unsigned* CSC::degreeSort(bool ascending)
 {
 	std::vector<std::pair<unsigned, unsigned>> degrees(m_N);
 
@@ -570,9 +568,9 @@ unsigned* CSC::degreeSort()
 		degrees[j].first = j;
 		degrees[j].second = m_ColPtrs[j + 1] - m_ColPtrs[j];
 	}
-	std::sort(degrees.begin(), degrees.end(), [](const auto& a, const auto& b)
+	std::sort(degrees.begin(), degrees.end(), [&](const auto& a, const auto& b)
 	{
-		if (a.second != b.second) return a.second > b.second;
+		if (a.second != b.second) return (ascending ? a.second < b.second : a.second > b.second);
 		return a.first < b.first;
 	});
 
@@ -582,67 +580,6 @@ unsigned* CSC::degreeSort()
 	{
 		inversePermutation[degrees[j].first] = j;
 	}
-	applyPermutation(inversePermutation);
-
-	return inversePermutation;
-}
-
-unsigned* CSC::partition(idx_t parts)
-{
-	std::vector<idx_t> ptrs(m_N + 1);
-	std::vector<idx_t> inds(m_NNZ);
-
-	for (unsigned i = 0; i <= m_N; ++i)
-	{
-		ptrs[i] = static_cast<idx_t>(m_ColPtrs[i]);
-	}
-	for (unsigned i = 0; i < m_NNZ; ++i)
-	{
-		inds[i] = static_cast<idx_t>(m_Rows[i]);
-	}
-
-	idx_t ncon = 1;
-	std::vector<idx_t> part(parts);
-	idx_t options[METIS_NOPTIONS];
-	METIS_SetDefaultOptions(options);
-	idx_t objval = 0;
-
-	int status = METIS_PartGraphKway(
-		&parts,
-		&ncon,
-		ptrs.data(),
-		inds.data(),
-		nullptr,
-		nullptr,
-		nullptr,
-		&parts,
-		nullptr,
-		nullptr,
-		options,
-		&objval,
-		part.data());
-
-	if (status != METIS_OK)
-	{
-		throw std::runtime_error("METIS_PartGraphKway failed with status " + std::to_string(status));
-	}
-
-	std::vector<unsigned> ordering(m_N);
-	std::iota(ordering.begin(), ordering.end(), 0);
-
-	std::stable_sort(ordering.begin(), ordering.end(), [&](unsigned lhs, unsigned rhs)
-	{
-		if (part[lhs] == part[rhs]) return lhs < rhs;
-		return part[lhs] < part[rhs];
-	});
-
-	unsigned* inversePermutation = new unsigned[m_N];
-	for (unsigned newIdx = 0; newIdx < m_N; ++newIdx)
-	{
-		unsigned original = ordering[newIdx];
-		inversePermutation[original] = newIdx;
-	}
-
 	applyPermutation(inversePermutation);
 
 	return inversePermutation;

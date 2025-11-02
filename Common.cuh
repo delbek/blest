@@ -7,6 +7,7 @@
 #include <limits>
 #include <fstream>
 #include <type_traits>
+#include <cuda/pipeline>
 using namespace cooperative_groups;
 
 #define ROAD_NETWORK_DEGREE 4
