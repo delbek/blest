@@ -319,7 +319,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 realSet.masks.emplace_back(slice.second);
             }
 
-            this->atomicNoContentionOrder(realSet);
+            this->grayCodeOrder(realSet);
     
             threadStats += this->distributeSlices(realSet, rsets[rset]);
         }

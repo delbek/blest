@@ -89,7 +89,7 @@ double Benchmark::runBRS(const Matrix& matrix)
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
 
-    unsigned* inversePermutation = nullptr;
+    unsigned* inversePermutation = csc->gorderWithJackard(sliceSize);
     /*
     if (csc->checkSymmetry()) inversePermutation = csc->rcm();
     else inversePermutation = csc->gorderWithJackard(sliceSize);
@@ -129,8 +129,8 @@ double Benchmark::runBRS(const Matrix& matrix)
         }
     }
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 1;
-    unsigned nIgnore = 0;
+    unsigned nRun = 5;
+    unsigned nIgnore = 2;
     double total = 0;
     unsigned iter = 0;
     for (const auto source: sources)

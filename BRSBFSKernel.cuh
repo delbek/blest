@@ -514,8 +514,6 @@ namespace BRSBFSKernels
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
         unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
 
-        unsigned fragC[4];
-
         bool cont = true;
         while (cont)
         {
@@ -523,6 +521,7 @@ namespace BRSBFSKernels
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
+                #pragma unroll 4
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
                     unsigned vset = sparseFrontierIds[i];
@@ -542,9 +541,10 @@ namespace BRSBFSKernels
                         }
                         else if (res == 4)
                         {
-                            fragB = origFragB << 8;
+                            fragB = (origFragB << 8);
                         }
                     }
+                    unsigned fragC[4];
                     fragC[0] = fragC[1] = 0;
                     MASK fragA = (mask & 0x0000FFFF);
                     m8n8k128(fragC, fragA, fragB);
@@ -553,32 +553,32 @@ namespace BRSBFSKernels
                     fragA = ((mask & 0xFFFF0000) >> 16);
                     m8n8k128(&fragC[2], fragA, fragB);
 
-                    unsigned word = rows.x / UNSIGNED_BITS;
-                    unsigned bit = rows.x % UNSIGNED_BITS;
+                    unsigned word = rows.x >> 5;
+                    unsigned bit = rows.x & 31;
                     unsigned temp = (1 << bit);
                     if (fragC[0])
                     {
                         atomicOr(&visitedNext[word], temp);
                     }
 
-                    word = rows.y / UNSIGNED_BITS;
-                    bit = rows.y % UNSIGNED_BITS;
+                    word = rows.y >> 5;
+                    bit = rows.y & 31;
                     temp = (1 << bit);
                     if (fragC[1])
                     {
                         atomicOr(&visitedNext[word], temp);
                     }
 
-                    word = rows.z / UNSIGNED_BITS;
-                    bit = rows.z % UNSIGNED_BITS;
+                    word = rows.z >> 5;
+                    bit = rows.z & 31;
                     temp = (1 << bit);
                     if (fragC[2])
                     {
                         atomicOr(&visitedNext[word], temp);
                     }
 
-                    word = rows.w / UNSIGNED_BITS;
-                    bit = rows.w % UNSIGNED_BITS;
+                    word = rows.w >> 5;
+                    bit = rows.w & 31;
                     temp = (1 << bit);
                     if (fragC[3])
                     {
@@ -610,6 +610,7 @@ namespace BRSBFSKernels
                                 fragB = (origFragB << 8);
                             }
                         }
+                        unsigned fragC[4];
                         fragC[0] = fragC[1] = 0;
                         MASK fragA = (mask & 0x0000FFFF);
                         m8n8k128(fragC, fragA, fragB);
@@ -618,32 +619,32 @@ namespace BRSBFSKernels
                         fragA = ((mask & 0xFFFF0000) >> 16);
                         m8n8k128(&fragC[2], fragA, fragB);
 
-                        unsigned word = rows.x / UNSIGNED_BITS;
-                        unsigned bit = rows.x % UNSIGNED_BITS;
+                        unsigned word = rows.x >> 5;
+                        unsigned bit = rows.x & 31;
                         unsigned temp = (1 << bit);
                         if (fragC[0])
                         {
                             atomicOr(&visitedNext[word], temp);
                         }
 
-                        word = rows.y / UNSIGNED_BITS;
-                        bit = rows.y % UNSIGNED_BITS;
+                        word = rows.y >> 5;
+                        bit = rows.y & 31;
                         temp = (1 << bit);
                         if (fragC[1])
                         {
                             atomicOr(&visitedNext[word], temp);
                         }
 
-                        word = rows.z / UNSIGNED_BITS;
-                        bit = rows.z % UNSIGNED_BITS;
+                        word = rows.z >> 5;
+                        bit = rows.z & 31;
                         temp = (1 << bit);
                         if (fragC[2])
                         {
                             atomicOr(&visitedNext[word], temp);
                         }
 
-                        word = rows.w / UNSIGNED_BITS;
-                        bit = rows.w % UNSIGNED_BITS;
+                        word = rows.w >> 5;
+                        bit = rows.w & 31;
                         temp = (1 << bit);
                         if (fragC[3])
                         {
@@ -737,7 +738,7 @@ namespace BRSBFSKernels
     {
         // MASK_BITS must be 32 BITS!
         
-        const auto grid = this_grid();
+        auto grid = this_grid();
         const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned noThreads = gridDim.x * blockDim.x;
         const unsigned noWarps = noThreads / WARP_SIZE;
@@ -751,57 +752,36 @@ namespace BRSBFSKernels
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
         unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
- 
-        MASK origFragBNext;
-        uint4 rowsNext;
-        MASK maskNext;
-        auto fetchValues = [&](const unsigned& i, const unsigned& currentFrontierSize)
-        {
-            if (i < currentFrontierSize)
-            {
-                unsigned vset = sparseFrontierIds[i];
-                origFragBNext = static_cast<MASK>(frontierSlice[virtualToReal[vset]]);
-                unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
-                rowsNext = {0, 0, 0, 0};
-                maskNext = 0;
-                unsigned tile = tileStart + laneID;
-                if (tile < tileEnd)
-                {
-                    loadRow4Ids_streaming(row4Ids + tile, rowsNext);
-                    loadMask_streaming(masks + tile, maskNext);
-                }
-            }
-        };
 
         bool cont = true;
         while (cont)
         {
             ++levelCount;
-            const unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
-                fetchValues(warpID, currentFrontierSize);
+                #pragma unroll 4
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
-                    const MASK origFragB = origFragBNext;
-                    uint4 rows = rowsNext;
-                    MASK mask = maskNext;
-                    
-                    fetchValues(i + noWarps, currentFrontierSize);
+                    unsigned vset = sparseFrontierIds[i];
+                    unsigned rset = virtualToReal[vset];
+                    MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
 
-                    unsigned wordx = rows.x >> 5;
-                    unsigned wordy = rows.y >> 5;
-                    unsigned wordz = rows.z >> 5;
-                    unsigned wordw = rows.w >> 5;
-                    unsigned tempx = (1 << (rows.x & 31));
-                    unsigned tempy = (1 << (rows.y & 31));
-                    unsigned tempz = (1 << (rows.z & 31));
-                    unsigned tempw = (1 << (rows.w & 31));
+                    unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                    unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+
+                    unsigned tile = tileStart + laneID;
+                    uint4 rows = {0, 0, 0, 0};
+                    MASK mask = 0;
+                    if (tile < tileEnd)
+                    {
+                        rows = row4Ids[tile];
+                        mask = masks[tile];
+                    }
 
                     MASK fragB = 0;
                     {
-                        const unsigned res = laneID % 9;
+                        unsigned res = laneID % 9;
                         if (res == 0)
                         {
                             fragB = origFragB;
@@ -811,61 +791,71 @@ namespace BRSBFSKernels
                             fragB = (origFragB << 8);
                         }
                     }
-
                     unsigned fragC[4];
                     fragC[0] = fragC[1] = 0;
                     MASK fragA = (mask & 0x0000FFFF);
                     m8n8k128(fragC, fragA, fragB);
 
-                    if (fragC[0])
-                        atomicOr(&visitedNext[wordx], tempx);
-
-                    if (fragC[1])
-                        atomicOr(&visitedNext[wordy], tempy);
-
                     fragC[2] = fragC[3] = 0;
                     fragA = ((mask & 0xFFFF0000) >> 16);
                     m8n8k128(&fragC[2], fragA, fragB);
 
-                    if (fragC[2])
-                        atomicOr(&visitedNext[wordz], tempz);
+                    unsigned word = rows.x >> 5;
+                    unsigned bit = rows.x & 31;
+                    unsigned temp = (1 << bit);
+                    if (fragC[0])
+                    {
+                        atomicOr(&visitedNext[word], temp);
+                    }
 
+                    word = rows.y >> 5;
+                    bit = rows.y & 31;
+                    temp = (1 << bit);
+                    if (fragC[1])
+                    {
+                        atomicOr(&visitedNext[word], temp);
+                    }
+
+                    word = rows.z >> 5;
+                    bit = rows.z & 31;
+                    temp = (1 << bit);
+                    if (fragC[2])
+                    {
+                        atomicOr(&visitedNext[word], temp);
+                    }
+
+                    word = rows.w >> 5;
+                    bit = rows.w & 31;
+                    temp = (1 << bit);
                     if (fragC[3])
-                        atomicOr(&visitedNext[wordw], tempw);
+                    {
+                        atomicOr(&visitedNext[word], temp);
+                    }
                 }
             }
             else // spmv
             {
                 for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
                 {
-                    const unsigned rset = virtualToReal[vset];
-                    const MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
+                    unsigned rset = virtualToReal[vset];
+                    MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
                     if (origFragB)
                     {
-                        const unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                        const unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                        unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                        unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
 
-                        const unsigned tile = tileStart + laneID;
+                        unsigned tile = tileStart + laneID;
                         uint4 rows = {0, 0, 0, 0};
                         MASK mask = 0;
                         if (tile < tileEnd)
                         {
-                            loadMask_streaming(masks + tile, mask);
-                            loadRow4Ids_streaming(row4Ids + tile, rows);
+                            rows = row4Ids[tile];
+                            mask = masks[tile];
                         }
-
-                        unsigned wordx = rows.x >> 5;
-                        unsigned wordy = rows.y >> 5;
-                        unsigned wordz = rows.z >> 5;
-                        unsigned wordw = rows.w >> 5;
-                        unsigned tempx = (1 << (rows.x & 31));
-                        unsigned tempy = (1 << (rows.y & 31));
-                        unsigned tempz = (1 << (rows.z & 31));
-                        unsigned tempw = (1 << (rows.w & 31));
 
                         MASK fragB = 0;
                         {
-                            const unsigned res = laneID % 9;
+                            unsigned res = laneID % 9;
                             if (res == 0)
                             {
                                 fragB = origFragB;
@@ -875,36 +865,55 @@ namespace BRSBFSKernels
                                 fragB = (origFragB << 8);
                             }
                         }
-
                         unsigned fragC[4];
                         fragC[0] = fragC[1] = 0;
                         MASK fragA = (mask & 0x0000FFFF);
                         m8n8k128(fragC, fragA, fragB);
 
-                        if (fragC[0])
-                            atomicOr(&visitedNext[wordx], tempx);
-
-                        if (fragC[1])
-                            atomicOr(&visitedNext[wordy], tempy);
-
                         fragC[2] = fragC[3] = 0;
                         fragA = ((mask & 0xFFFF0000) >> 16);
                         m8n8k128(&fragC[2], fragA, fragB);
 
-                        if (fragC[2])
-                            atomicOr(&visitedNext[wordz], tempz);
+                        unsigned word = rows.x >> 5;
+                        unsigned bit = rows.x & 31;
+                        unsigned temp = (1 << bit);
+                        if (fragC[0])
+                        {
+                            atomicOr(&visitedNext[word], temp);
+                        }
 
+                        word = rows.y >> 5;
+                        bit = rows.y & 31;
+                        temp = (1 << bit);
+                        if (fragC[1])
+                        {
+                            atomicOr(&visitedNext[word], temp);
+                        }
+
+                        word = rows.z >> 5;
+                        bit = rows.z & 31;
+                        temp = (1 << bit);
+                        if (fragC[2])
+                        {
+                            atomicOr(&visitedNext[word], temp);
+                        }
+
+                        word = rows.w >> 5;
+                        bit = rows.w & 31;
+                        temp = (1 << bit);
                         if (fragC[3])
-                            atomicOr(&visitedNext[wordw], tempw);
+                        {
+                            atomicOr(&visitedNext[word], temp);
+                        }
                     }
                 }
             }
             grid.sync();
             for (unsigned i = threadID; i < noWords; i += noThreads)
             {
-                const unsigned next = visitedNext[i];
-                const unsigned diff = visited[i] ^ next;
-                const unsigned rssOffset = i << 2;
+                unsigned next = visitedNext[i];
+                unsigned diff = visited[i] ^ next;
+                unsigned rssOffset = i << 2;
                 if (diff != 0)
                 {
                     visited[i] = next;
@@ -912,20 +921,20 @@ namespace BRSBFSKernels
                     #pragma unroll 4
                     for (unsigned set = 0; set < 4; ++set)
                     {
-                        const MASK sliceMask = ((diff >> (set << 3)) & 0x000000FF);
+                        MASK sliceMask = ((diff >> (set << 3)) & 0x000000FF);
                         if (sliceMask != 0)
                         {
-                            const unsigned rss = rssOffset + set;
-                            const unsigned start = realPtrs[rss];
-                            const unsigned end = realPtrs[rss + 1];
+                            unsigned rss = rssOffset + set;
+                            unsigned start = realPtrs[rss];
+                            unsigned end = realPtrs[rss + 1];
                             unsigned scan = end - start;
 
-                            const auto coalesced = coalesced_threads();
-                            const unsigned lane = coalesced.thread_rank();
+                            auto coalesced = coalesced_threads();
+                            unsigned lane = coalesced.thread_rank();
 
                             for (unsigned stride = 1; stride < coalesced.size(); stride <<= 1)
                             {
-                                const unsigned from = coalesced.shfl_up(scan, stride);
+                                unsigned from = coalesced.shfl_up(scan, stride);
                                 if (lane >= stride) scan += from;
                             }
                             
