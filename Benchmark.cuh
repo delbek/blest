@@ -129,8 +129,8 @@ double Benchmark::runBRS(const Matrix& matrix)
         }
     }
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 5;
-    unsigned nIgnore = 2;
+    unsigned nRun = 1;
+    unsigned nIgnore = 0;
     double total = 0;
     unsigned iter = 0;
     for (const auto source: sources)

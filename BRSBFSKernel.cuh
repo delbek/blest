@@ -713,32 +713,6 @@ namespace BRSBFSKernels
         }
     }
 
-    __device__ __forceinline__ void or4_predicated(
-        unsigned* p0, unsigned m0, int c0,
-        unsigned* p1, unsigned m1, int c1,
-        unsigned* p2, unsigned m2, int c2,
-        unsigned* p3, unsigned m3, int c3)
-    {
-        asm volatile (
-            "{\n\t"
-            " .reg .pred q0,q1,q2,q3;\n\t"
-            " setp.ne.s32 q0, %8,  0;\n\t"
-            " setp.ne.s32 q1, %9,  0;\n\t"
-            " setp.ne.s32 q2, %10, 0;\n\t"
-            " setp.ne.s32 q3, %11, 0;\n\t"
-            " @q0 red.global.or.b32 [%0], %4;\n\t"
-            " @q1 red.global.or.b32 [%1], %5;\n\t"
-            " @q2 red.global.or.b32 [%2], %6;\n\t"
-            " @q3 red.global.or.b32 [%3], %7;\n\t"
-            "}\n"
-            :
-            : "l"(p0), "l"(p1), "l"(p2), "l"(p3),  // 64-bit addresses
-            "r"(m0), "r"(m1), "r"(m2), "r"(m3),  // 32-bit masks
-            "r"(c0), "r"(c1), "r"(c2), "r"(c3)
-            : "memory"
-        );
-    }
-
     __global__ void BRSBFS8EnhancedNoMasks4(const unsigned* const __restrict__ noSliceSetsPtr,
                                             const unsigned* const __restrict__ sliceSetPtrs,
                                             const unsigned* const __restrict__ virtualToReal,
@@ -777,6 +751,28 @@ namespace BRSBFSKernels
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
         unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
+ 
+        MASK origFragBNext;
+        uint4 rowsNext;
+        MASK maskNext;
+        auto fetchValues = [&](const unsigned& i, const unsigned& currentFrontierSize)
+        {
+            if (i < currentFrontierSize)
+            {
+                unsigned vset = sparseFrontierIds[i];
+                origFragBNext = static_cast<MASK>(frontierSlice[virtualToReal[vset]]);
+                unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                rowsNext = {0, 0, 0, 0};
+                maskNext = 0;
+                unsigned tile = tileStart + laneID;
+                if (tile < tileEnd)
+                {
+                    loadRow4Ids_streaming(row4Ids + tile, rowsNext);
+                    loadMask_streaming(masks + tile, maskNext);
+                }
+            }
+        };
 
         bool cont = true;
         while (cont)
@@ -785,24 +781,23 @@ namespace BRSBFSKernels
             const unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
+                fetchValues(warpID, currentFrontierSize);
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
-                    const unsigned vset = sparseFrontierIds[i];
-                    const unsigned rset = virtualToReal[vset];
+                    const MASK origFragB = origFragBNext;
+                    uint4 rows = rowsNext;
+                    MASK mask = maskNext;
                     
-                    const unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                    const unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                    fetchValues(i + noWarps, currentFrontierSize);
 
-                    const MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
-
-                    const unsigned tile = tileStart + laneID;
-                    uint4 rows = {0, 0, 0, 0};
-                    MASK mask = 0;
-                    if (tile < tileEnd)
-                    {
-                        loadRow4Ids_streaming(row4Ids + tile, rows);
-                        loadMask_streaming(masks + tile, mask);
-                    }
+                    unsigned wordx = rows.x >> 5;
+                    unsigned wordy = rows.y >> 5;
+                    unsigned wordz = rows.z >> 5;
+                    unsigned wordw = rows.w >> 5;
+                    unsigned tempx = (1 << (rows.x & 31));
+                    unsigned tempy = (1 << (rows.y & 31));
+                    unsigned tempz = (1 << (rows.z & 31));
+                    unsigned tempw = (1 << (rows.w & 31));
 
                     MASK fragB = 0;
                     {
@@ -822,28 +817,21 @@ namespace BRSBFSKernels
                     MASK fragA = (mask & 0x0000FFFF);
                     m8n8k128(fragC, fragA, fragB);
 
+                    if (fragC[0])
+                        atomicOr(&visitedNext[wordx], tempx);
+
+                    if (fragC[1])
+                        atomicOr(&visitedNext[wordy], tempy);
+
                     fragC[2] = fragC[3] = 0;
                     fragA = ((mask & 0xFFFF0000) >> 16);
                     m8n8k128(&fragC[2], fragA, fragB);
 
-                    asm volatile(
-                                    "{\n\t"
-                                    " .reg .pred q0, q1, q2, q3;\n\t"
-                                    " setp.ne.s32 q0, %8,  0;\n\t"
-                                    " setp.ne.s32 q1, %9,  0;\n\t"
-                                    " setp.ne.s32 q2, %10, 0;\n\t"
-                                    " setp.ne.s32 q3, %11, 0;\n\t"
-                                    " @q0 red.global.or.b32 [%0], %4;\n\t"
-                                    " @q1 red.global.or.b32 [%1], %5;\n\t"
-                                    " @q2 red.global.or.b32 [%2], %6;\n\t"
-                                    " @q3 red.global.or.b32 [%3], %7;\n\t"
-                                    "}\n"
-                                    :
-                                    :   "l"(&visitedNext[rows.x >> 5]), "l"(&visitedNext[rows.y >> 5]), "l"(&visitedNext[rows.z >> 5]), "l"(&visitedNext[rows.w >> 5]),
-                                        "r"(1 << (rows.x & 31)),        "r"(1 << (rows.y & 31)),        "r"(1 << (rows.z & 31)),        "r"(1 << (rows.w & 31)),
-                                        "r"(fragC[0]),                  "r"(fragC[1]),                  "r"(fragC[2]),                  "r"(fragC[3])
-                                    :   "memory"
-                                );
+                    if (fragC[2])
+                        atomicOr(&visitedNext[wordz], tempz);
+
+                    if (fragC[3])
+                        atomicOr(&visitedNext[wordw], tempw);
                 }
             }
             else // spmv
@@ -862,9 +850,18 @@ namespace BRSBFSKernels
                         MASK mask = 0;
                         if (tile < tileEnd)
                         {
-                            loadRow4Ids_streaming(row4Ids + tile, rows);
                             loadMask_streaming(masks + tile, mask);
+                            loadRow4Ids_streaming(row4Ids + tile, rows);
                         }
+
+                        unsigned wordx = rows.x >> 5;
+                        unsigned wordy = rows.y >> 5;
+                        unsigned wordz = rows.z >> 5;
+                        unsigned wordw = rows.w >> 5;
+                        unsigned tempx = (1 << (rows.x & 31));
+                        unsigned tempy = (1 << (rows.y & 31));
+                        unsigned tempz = (1 << (rows.z & 31));
+                        unsigned tempw = (1 << (rows.w & 31));
 
                         MASK fragB = 0;
                         {
@@ -884,28 +881,21 @@ namespace BRSBFSKernels
                         MASK fragA = (mask & 0x0000FFFF);
                         m8n8k128(fragC, fragA, fragB);
 
+                        if (fragC[0])
+                            atomicOr(&visitedNext[wordx], tempx);
+
+                        if (fragC[1])
+                            atomicOr(&visitedNext[wordy], tempy);
+
                         fragC[2] = fragC[3] = 0;
                         fragA = ((mask & 0xFFFF0000) >> 16);
                         m8n8k128(&fragC[2], fragA, fragB);
 
-                        asm volatile(
-                                        "{\n\t"
-                                        " .reg .pred q0, q1, q2, q3;\n\t"
-                                        " setp.ne.s32 q0, %8,  0;\n\t"
-                                        " setp.ne.s32 q1, %9,  0;\n\t"
-                                        " setp.ne.s32 q2, %10, 0;\n\t"
-                                        " setp.ne.s32 q3, %11, 0;\n\t"
-                                        " @q0 red.global.or.b32 [%0], %4;\n\t"
-                                        " @q1 red.global.or.b32 [%1], %5;\n\t"
-                                        " @q2 red.global.or.b32 [%2], %6;\n\t"
-                                        " @q3 red.global.or.b32 [%3], %7;\n\t"
-                                        "}\n"
-                                        :
-                                        :   "l"(&visitedNext[rows.x >> 5]), "l"(&visitedNext[rows.y >> 5]), "l"(&visitedNext[rows.z >> 5]), "l"(&visitedNext[rows.w >> 5]),
-                                            "r"(1 << (rows.x & 31)),        "r"(1 << (rows.y & 31)),        "r"(1 << (rows.z & 31)),        "r"(1 << (rows.w & 31)),
-                                            "r"(fragC[0]),                  "r"(fragC[1]),                  "r"(fragC[2]),                  "r"(fragC[3])
-                                        :   "memory"
-                                    );
+                        if (fragC[2])
+                            atomicOr(&visitedNext[wordz], tempz);
+
+                        if (fragC[3])
+                            atomicOr(&visitedNext[wordw], tempw);
                     }
                 }
             }

@@ -464,6 +464,7 @@ void BRS::atomicNoContentionOrder(VSet& rset)
             }
         }
     }
+    
     for (auto& bucket: buckets)
     {
         for (auto& slice: bucket)
