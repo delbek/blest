@@ -713,6 +713,32 @@ namespace BRSBFSKernels
         }
     }
 
+    __device__ __forceinline__ void or4_predicated(
+        unsigned* p0, unsigned m0, int c0,
+        unsigned* p1, unsigned m1, int c1,
+        unsigned* p2, unsigned m2, int c2,
+        unsigned* p3, unsigned m3, int c3)
+    {
+        asm volatile (
+            "{\n\t"
+            " .reg .pred q0,q1,q2,q3;\n\t"
+            " setp.ne.s32 q0, %8,  0;\n\t"
+            " setp.ne.s32 q1, %9,  0;\n\t"
+            " setp.ne.s32 q2, %10, 0;\n\t"
+            " setp.ne.s32 q3, %11, 0;\n\t"
+            " @q0 red.global.or.b32 [%0], %4;\n\t"
+            " @q1 red.global.or.b32 [%1], %5;\n\t"
+            " @q2 red.global.or.b32 [%2], %6;\n\t"
+            " @q3 red.global.or.b32 [%3], %7;\n\t"
+            "}\n"
+            :
+            : "l"(p0), "l"(p1), "l"(p2), "l"(p3),  // 64-bit addresses
+            "r"(m0), "r"(m1), "r"(m2), "r"(m3),  // 32-bit masks
+            "r"(c0), "r"(c1), "r"(c2), "r"(c3)
+            : "memory"
+        );
+    }
+
     __global__ void BRSBFS8EnhancedNoMasks4(const unsigned* const __restrict__ noSliceSetsPtr,
                                             const unsigned* const __restrict__ sliceSetPtrs,
                                             const unsigned* const __restrict__ virtualToReal,
@@ -737,7 +763,7 @@ namespace BRSBFSKernels
     {
         // MASK_BITS must be 32 BITS!
         
-        auto grid = this_grid();
+        const auto grid = this_grid();
         const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned noThreads = gridDim.x * blockDim.x;
         const unsigned noWarps = noThreads / WARP_SIZE;
@@ -752,46 +778,46 @@ namespace BRSBFSKernels
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
         unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
 
-        unsigned fragC[4];
-
         bool cont = true;
         while (cont)
         {
             ++levelCount;
-            unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            const unsigned currentFrontierSize = *frontierCurrentSizePtr;
             if (currentFrontierSize < DIRECTION_THRESHOLD) // spspmv
             {
                 for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
                 {
-                    unsigned vset = sparseFrontierIds[i];
-                    unsigned rset = virtualToReal[vset];
+                    const unsigned vset = sparseFrontierIds[i];
+                    const unsigned rset = virtualToReal[vset];
                     
-                    unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                    unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                    const unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                    const unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
 
-                    MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
+                    const MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
 
-                    unsigned tile = tileStart + laneID;
+                    const unsigned tile = tileStart + laneID;
                     uint4 rows = {0, 0, 0, 0};
                     MASK mask = 0;
                     if (tile < tileEnd)
                     {
-                        rows = row4Ids[tile];
-                        mask = masks[tile];
+                        loadRow4Ids_streaming(row4Ids + tile, rows);
+                        loadMask_streaming(masks + tile, mask);
                     }
 
                     MASK fragB = 0;
                     {
-                        unsigned res = laneID % 9;
+                        const unsigned res = laneID % 9;
                         if (res == 0)
                         {
                             fragB = origFragB;
                         }
                         else if (res == 4)
                         {
-                            fragB = origFragB << 8;
+                            fragB = (origFragB << 8);
                         }
                     }
+
+                    unsigned fragC[4];
                     fragC[0] = fragC[1] = 0;
                     MASK fragA = (mask & 0x0000FFFF);
                     m8n8k128(fragC, fragA, fragB);
@@ -800,62 +826,49 @@ namespace BRSBFSKernels
                     fragA = ((mask & 0xFFFF0000) >> 16);
                     m8n8k128(&fragC[2], fragA, fragB);
 
-                    unsigned word = rows.x / UNSIGNED_BITS;
-                    unsigned bit = rows.x % UNSIGNED_BITS;
-                    unsigned temp = (1 << bit);
-                    if (fragC[0])
-                    {
-                        atomicOr(&visitedNext[word], temp);
-                    }
-
-                    word = rows.y / UNSIGNED_BITS;
-                    bit = rows.y % UNSIGNED_BITS;
-                    temp = (1 << bit);
-                    if (fragC[1])
-                    {
-                        atomicOr(&visitedNext[word], temp);
-                    }
-
-                    word = rows.z / UNSIGNED_BITS;
-                    bit = rows.z % UNSIGNED_BITS;
-                    temp = (1 << bit);
-                    if (fragC[2])
-                    {
-                        atomicOr(&visitedNext[word], temp);
-                    }
-
-                    word = rows.w / UNSIGNED_BITS;
-                    bit = rows.w % UNSIGNED_BITS;
-                    temp = (1 << bit);
-                    if (fragC[3])
-                    {
-                        atomicOr(&visitedNext[word], temp);
-                    }
+                    asm volatile(
+                                    "{\n\t"
+                                    " .reg .pred q0, q1, q2, q3;\n\t"
+                                    " setp.ne.s32 q0, %8,  0;\n\t"
+                                    " setp.ne.s32 q1, %9,  0;\n\t"
+                                    " setp.ne.s32 q2, %10, 0;\n\t"
+                                    " setp.ne.s32 q3, %11, 0;\n\t"
+                                    " @q0 red.global.or.b32 [%0], %4;\n\t"
+                                    " @q1 red.global.or.b32 [%1], %5;\n\t"
+                                    " @q2 red.global.or.b32 [%2], %6;\n\t"
+                                    " @q3 red.global.or.b32 [%3], %7;\n\t"
+                                    "}\n"
+                                    :
+                                    :   "l"(&visitedNext[rows.x >> 5]), "l"(&visitedNext[rows.y >> 5]), "l"(&visitedNext[rows.z >> 5]), "l"(&visitedNext[rows.w >> 5]),
+                                        "r"(1 << (rows.x & 31)),        "r"(1 << (rows.y & 31)),        "r"(1 << (rows.z & 31)),        "r"(1 << (rows.w & 31)),
+                                        "r"(fragC[0]),                  "r"(fragC[1]),                  "r"(fragC[2]),                  "r"(fragC[3])
+                                    :   "memory"
+                                );
                 }
             }
             else // spmv
             {
                 for (unsigned vset = warpID; vset < noSliceSets; vset += noWarps)
                 {
-                    unsigned rset = virtualToReal[vset];
-                    MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
+                    const unsigned rset = virtualToReal[vset];
+                    const MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
                     if (origFragB)
                     {
-                        unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                        unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                        const unsigned tileStart = (sliceSetPtrs[vset] >> 2);
+                        const unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
 
-                        unsigned tile = tileStart + laneID;
+                        const unsigned tile = tileStart + laneID;
                         uint4 rows = {0, 0, 0, 0};
                         MASK mask = 0;
                         if (tile < tileEnd)
                         {
-                            rows = row4Ids[tile];
-                            mask = masks[tile];
+                            loadRow4Ids_streaming(row4Ids + tile, rows);
+                            loadMask_streaming(masks + tile, mask);
                         }
 
                         MASK fragB = 0;
                         {
-                            unsigned res = laneID % 9;
+                            const unsigned res = laneID % 9;
                             if (res == 0)
                             {
                                 fragB = origFragB;
@@ -865,6 +878,8 @@ namespace BRSBFSKernels
                                 fragB = (origFragB << 8);
                             }
                         }
+
+                        unsigned fragC[4];
                         fragC[0] = fragC[1] = 0;
                         MASK fragA = (mask & 0x0000FFFF);
                         m8n8k128(fragC, fragA, fragB);
@@ -873,46 +888,33 @@ namespace BRSBFSKernels
                         fragA = ((mask & 0xFFFF0000) >> 16);
                         m8n8k128(&fragC[2], fragA, fragB);
 
-                        unsigned word = rows.x / UNSIGNED_BITS;
-                        unsigned bit = rows.x % UNSIGNED_BITS;
-                        unsigned temp = (1 << bit);
-                        if (fragC[0])
-                        {
-                            atomicOr(&visitedNext[word], temp);
-                        }
-
-                        word = rows.y / UNSIGNED_BITS;
-                        bit = rows.y % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        if (fragC[1])
-                        {
-                            atomicOr(&visitedNext[word], temp);
-                        }
-
-                        word = rows.z / UNSIGNED_BITS;
-                        bit = rows.z % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        if (fragC[2])
-                        {
-                            atomicOr(&visitedNext[word], temp);
-                        }
-
-                        word = rows.w / UNSIGNED_BITS;
-                        bit = rows.w % UNSIGNED_BITS;
-                        temp = (1 << bit);
-                        if (fragC[3])
-                        {
-                            atomicOr(&visitedNext[word], temp);
-                        }
+                        asm volatile(
+                                        "{\n\t"
+                                        " .reg .pred q0, q1, q2, q3;\n\t"
+                                        " setp.ne.s32 q0, %8,  0;\n\t"
+                                        " setp.ne.s32 q1, %9,  0;\n\t"
+                                        " setp.ne.s32 q2, %10, 0;\n\t"
+                                        " setp.ne.s32 q3, %11, 0;\n\t"
+                                        " @q0 red.global.or.b32 [%0], %4;\n\t"
+                                        " @q1 red.global.or.b32 [%1], %5;\n\t"
+                                        " @q2 red.global.or.b32 [%2], %6;\n\t"
+                                        " @q3 red.global.or.b32 [%3], %7;\n\t"
+                                        "}\n"
+                                        :
+                                        :   "l"(&visitedNext[rows.x >> 5]), "l"(&visitedNext[rows.y >> 5]), "l"(&visitedNext[rows.z >> 5]), "l"(&visitedNext[rows.w >> 5]),
+                                            "r"(1 << (rows.x & 31)),        "r"(1 << (rows.y & 31)),        "r"(1 << (rows.z & 31)),        "r"(1 << (rows.w & 31)),
+                                            "r"(fragC[0]),                  "r"(fragC[1]),                  "r"(fragC[2]),                  "r"(fragC[3])
+                                        :   "memory"
+                                    );
                     }
                 }
             }
             grid.sync();
             for (unsigned i = threadID; i < noWords; i += noThreads)
             {
-                unsigned next = visitedNext[i];
-                unsigned diff = visited[i] ^ next;
-                unsigned rssOffset = i << 2;
+                const unsigned next = visitedNext[i];
+                const unsigned diff = visited[i] ^ next;
+                const unsigned rssOffset = i << 2;
                 if (diff != 0)
                 {
                     visited[i] = next;
@@ -920,20 +922,20 @@ namespace BRSBFSKernels
                     #pragma unroll 4
                     for (unsigned set = 0; set < 4; ++set)
                     {
-                        MASK sliceMask = ((diff >> (set << 3)) & 0x000000FF);
+                        const MASK sliceMask = ((diff >> (set << 3)) & 0x000000FF);
                         if (sliceMask != 0)
                         {
-                            unsigned rss = rssOffset + set;
-                            unsigned start = realPtrs[rss];
-                            unsigned end = realPtrs[rss + 1];
+                            const unsigned rss = rssOffset + set;
+                            const unsigned start = realPtrs[rss];
+                            const unsigned end = realPtrs[rss + 1];
                             unsigned scan = end - start;
 
-                            auto coalesced = coalesced_threads();
-                            unsigned lane = coalesced.thread_rank();
+                            const auto coalesced = coalesced_threads();
+                            const unsigned lane = coalesced.thread_rank();
 
                             for (unsigned stride = 1; stride < coalesced.size(); stride <<= 1)
                             {
-                                unsigned from = coalesced.shfl_up(scan, stride);
+                                const unsigned from = coalesced.shfl_up(scan, stride);
                                 if (lane >= stride) scan += from;
                             }
                             

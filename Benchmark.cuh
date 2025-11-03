@@ -66,8 +66,8 @@ void Benchmark::main()
         {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
+        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
         {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
         {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
@@ -87,8 +87,9 @@ double Benchmark::runBRS(const Matrix& matrix)
     unsigned sliceSize = 8;
 
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
+    std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
 
-    unsigned* inversePermutation = csc->gorderWithJackard(sliceSize);
+    unsigned* inversePermutation = nullptr;
     /*
     if (csc->checkSymmetry()) inversePermutation = csc->rcm();
     else inversePermutation = csc->gorderWithJackard(sliceSize);
@@ -128,8 +129,8 @@ double Benchmark::runBRS(const Matrix& matrix)
         }
     }
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 1;
-    unsigned nIgnore = 0;
+    unsigned nRun = 5;
+    unsigned nIgnore = 2;
     double total = 0;
     unsigned iter = 0;
     for (const auto source: sources)

@@ -12,7 +12,7 @@ using namespace cooperative_groups;
 
 #define ROAD_NETWORK_DEGREE 4
 #define ROAD_NETWORK_FUSION_CONSTANT 1
-#define SOCIAL_NETWORK_FUSION_CONSTANT 8
+#define SOCIAL_NETWORK_FUSION_CONSTANT 9
 #define DIRECTION_SWITCHING_CONSTANT 1
 
 #define M 8
@@ -35,46 +35,39 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 
 __device__ __forceinline__ void m8n8k128(unsigned* const __restrict__ fragC, const unsigned& fragA, const unsigned& fragB)
 {
-    asm volatile(
-        "mma.sync.aligned.m8n8k128.row.col.s32.b1.b1.s32.and.popc"
-        " { %0, %1 }, "
-        " { %2 }, "
-        " { %3 }, "
-        " { %4, %5 };"
-        : "+r"(fragC[0]), "+r"(fragC[1])
-        : "r"(fragA), "r"(fragB), "r"(fragC[0]), "r"(fragC[1]));
+    asm volatile("mma.sync.aligned.m8n8k128.row.col.s32.b1.b1.s32.and.popc"
+                 " { %0, %1 }, "
+                 " { %2 }, "
+                 " { %3 }, "
+                 " { %4, %5 };"
+                 : "+r"(fragC[0]), "+r"(fragC[1])
+                 : "r"(fragA), "r"(fragB), "r"(fragC[0]), "r"(fragC[1]));
 }
 
-template <class T>
-__device__ __forceinline__ void storeNotCached(T* ptr, const T& val)
+template <typename T>
+__device__ __forceinline__ void load_l1bypass(const T* const __restrict__ ptr, T& val)
 {
     static_assert(sizeof(T) == 4);
-    asm volatile("st.global.wt.b32 [%0], %1;" :: "l"(ptr), "r"(val) : "memory");
+    asm volatile("ld.global.cg.b32 %0, [%1];"
+                 : "=r"(val)
+                 : "l"(ptr)
+                 : "memory");
 }
 
-template <class T>
-__device__ __forceinline__ void storeEvictFirst(T* ptr, const T& val)
+__device__ __forceinline__ void loadMask_streaming(const MASK* const __restrict__ ptr, MASK& val)
 {
-    static_assert(sizeof(T) == 4);
-    asm volatile("st.global.L1::evict_first.b32 [%0], %1;" :: "l"(ptr), "r"(val) : "memory");
+    asm volatile("ld.global.cs.b32 %0, [%1];"
+                 : "=r"(val)
+                 : "l"(ptr)
+                 : "memory");
 }
 
-template <class T>
-__device__ __forceinline__ T loadNotCached(const T* ptr)
+__device__ __forceinline__ void loadRow4Ids_streaming(const uint4* const __restrict__ ptr, uint4& val)
 {
-    static_assert(sizeof(T) == 4);
-    T val;
-    asm volatile("ld.global.cg.b32 %0, [%1];" : "=r"(val) : "l"(ptr) : "memory");
-    return val;
-}
-
-template <class T>
-__device__ __forceinline__ T loadEvictFirst(const T* ptr)
-{
-    static_assert(sizeof(T) == 4);
-    T val;
-    asm volatile("ld.global.L1::evict_first.b32 %0, [%1];" : "=r"(val) : "l"(ptr) : "memory");
-    return val;
+    asm volatile("ld.global.cs.v4.u32 {%0, %1, %2, %3}, [%4];"
+                 : "=r"(val.x), "=r"(val.y), "=r"(val.z), "=r"(val.w)
+                 : "l"(ptr)
+                 : "memory");
 }
 
 template <class T>

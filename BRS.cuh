@@ -82,6 +82,7 @@ public:
 
 private:
     void grayCodeOrder(VSet& rset);
+    void atomicNoContentionOrder(VSet& rset);
     VSetStatistics distributeSlices(const VSet& rset, std::vector<VSet>& vsets);
     VSetStatistics computeVSetStatistics(const VSet& vset);
 
@@ -318,7 +319,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 realSet.masks.emplace_back(slice.second);
             }
 
-            this->grayCodeOrder(realSet);
+            this->atomicNoContentionOrder(realSet);
     
             threadStats += this->distributeSlices(realSet, rsets[rset]);
         }
@@ -416,6 +417,63 @@ void BRS::grayCodeOrder(VSet& rset)
         {
             newSet.rows.emplace_back(row);
             newSet.masks.emplace_back(static_cast<MASK>(bucket));
+        }
+    }
+
+    rset = std::move(newSet);
+}
+
+void BRS::atomicNoContentionOrder(VSet& rset)
+{
+    unsigned noMasks = MASK_BITS / m_SliceSize;
+
+    unsigned noBuckets = (m_N + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
+    std::vector<std::vector<std::tuple<unsigned, MASK, bool>>> buckets(noBuckets);
+
+    unsigned n = rset.rows.size();
+    for (unsigned s = 0; s < rset.rows.size(); ++s)
+    {
+        unsigned row = rset.rows[s];
+        MASK mask = rset.masks[s];
+        unsigned bucketNo = row / UNSIGNED_BITS;
+        buckets[bucketNo].emplace_back(row, mask, false);
+    }
+
+    VSet newSet;
+    newSet.rset = rset.rset;
+    newSet.rows.reserve(n);
+    newSet.masks.reserve(n);
+
+    unsigned iterationCount = (n + noMasks - 1) / noMasks;
+    for (unsigned iter = 0; iter < iterationCount; ++iter)
+    {
+        unsigned added = 0;
+        for (auto& bucket: buckets)
+        {
+            if (added == noMasks) break;
+            for (auto& slice: bucket)
+            {
+                if (std::get<2>(slice) == false)
+                {
+                    newSet.rows.emplace_back(std::get<0>(slice));
+                    newSet.masks.emplace_back(std::get<1>(slice));
+                    std::get<2>(slice) = true;
+                    ++added;
+                    break;
+                }
+            }
+        }
+    }
+    for (auto& bucket: buckets)
+    {
+        for (auto& slice: bucket)
+        {
+            if (std::get<2>(slice) == false)
+            {
+                newSet.rows.emplace_back(std::get<0>(slice));
+                newSet.masks.emplace_back(std::get<1>(slice));
+                std::get<2>(slice) = true;
+            }
         }
     }
 
