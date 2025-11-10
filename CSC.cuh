@@ -41,16 +41,14 @@ public:
 
 	// orderings
 	unsigned* random();
-	unsigned* jackard(unsigned sliceSize);
+	unsigned* rcmWithJackard(unsigned sliceSize);
 	unsigned* gorderWithJackard(unsigned sliceSize);
 	unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
 	unsigned* degreeSort(bool ascending = true);
 	bool checkSymmetry();
 	CSC* symmetrize();
-	// symmetric ones
 	unsigned findPseudoPeripheralNode(CSC* csc, unsigned startNode);
 	unsigned* rcm();
-	//
 	void applyPermutation(unsigned* inversePermutation);
 	bool permutationCheck(unsigned* inversePermutation);
 
@@ -60,7 +58,6 @@ private:
 	double m_AverageDegree;
 	unsigned* m_ColPtrs;
 	unsigned* m_Rows;
-	CSC* m_Transpose;
 };
 
 CSC::CSC(std::string filename, bool undirected, bool binary)
@@ -144,45 +141,12 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	m_AverageDegree /= m_N;
 	std::cout << "Average degree: " << m_AverageDegree << std::endl;
 	//
-
-	// transpose
-	// sort j's
-	std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
-	{
-		if (a.first == b.first)
-		{
-			return a.second < b.second;
-		}
-		else
-		{
-			return a.first < b.first;
-		}
-	});
-
-	m_Transpose = new CSC();
-	m_Transpose->m_ColPtrs = new unsigned[m_N + 1];
-	m_Transpose->m_Rows = new unsigned[m_NNZ];
-
-	std::fill(m_Transpose->m_ColPtrs, m_Transpose->m_ColPtrs + m_N + 1, 0);
-
-	for (unsigned iter = 0; iter < m_NNZ; ++iter)
-	{
-		++m_Transpose->m_ColPtrs[nnzs[iter].first + 1];
-		m_Transpose->m_Rows[iter] = nnzs[iter].second;
-	}
-
-	for (unsigned j = 0; j < m_N; ++j)
-	{
-		m_Transpose->m_ColPtrs[j + 1] += m_Transpose->m_ColPtrs[j];
-	}
-	//
 }
 
 CSC::~CSC()
 {
 	delete[] m_ColPtrs;
 	delete[] m_Rows;
-	delete m_Transpose;
 }
 
 unsigned CSC::maxBandwidth()
@@ -252,159 +216,16 @@ unsigned* CSC::random()
 	return inversePermutation;
 }
 
-unsigned* CSC::jackard(unsigned sliceSize)
+unsigned* CSC::rcmWithJackard(unsigned sliceSize)
 {
-	unsigned* inversePermutation = new unsigned[m_N];
-	std::vector<bool> permuted(m_N, false);
+	unsigned windowSize = 65536;
 
-	std::vector<unsigned> rowMark(m_N, 0);
-	unsigned epoch = 1;
-	unsigned unionSize = 0;
+	unsigned* rcmPermutation = this->rcm();
+	unsigned* jackardPermutation = this->jackardWithWindow(sliceSize, windowSize);
 
-	auto nextEpoch = [&]()
-	{
-		++epoch;
-		unionSize = 0;
-		if (epoch == std::numeric_limits<unsigned>::max())
-		{
-			std::fill(rowMark.begin(), rowMark.end(), 0);
-			epoch = 1;
-		}
-	};
-	auto isMarked = [&](unsigned r)
-	{
-		return rowMark[r] == epoch;
-	};
-	auto markRow = [&](unsigned r)
-	{
-		if (rowMark[r] != epoch)
-		{
-			rowMark[r] = epoch;
-			++unionSize;
-		}
-	};
+	unsigned* chained = chainPermutations(m_N, rcmPermutation, jackardPermutation);
 
-	std::vector<std::pair<unsigned, unsigned>> degreesSorted(m_N);
-	for (unsigned j = 0; j < m_N; ++j)
-	{
-		degreesSorted[j] = std::pair<unsigned, unsigned>(m_ColPtrs[j + 1] - m_ColPtrs[j], j);
-	}
-	std::sort(degreesSorted.begin(), degreesSorted.end(), [](const auto& a, const auto& b) 
-	{
-		if (a.first == b.first)
-		{
-			return a.second < b.second;
-		}
-		else
-		{
-			return a.first > b.first;
-		}
-	});
-
-	unsigned noSliceSets = (m_N + sliceSize - 1) / sliceSize;
-	for (unsigned sliceSet = 0; sliceSet < noSliceSets; ++sliceSet)
-	{
-		nextEpoch();
-
-		unsigned sliceStart = sliceSet * sliceSize;
-		unsigned sliceEnd = std::min(sliceStart + sliceSize, m_N);
-
-		unsigned col = UNSIGNED_MAX;
-		for (unsigned p = 0; p < m_N; ++p)
-		{
-			const auto& pair = degreesSorted[p];
-			if (permuted[pair.second]) continue;
-			col = pair.second;
-		}
-		if (col == UNSIGNED_MAX) break;
-
-		inversePermutation[col] = sliceStart;
-		permuted[col] = true;
-
-		std::vector<unsigned> cols;
-		for (unsigned colnnz = m_ColPtrs[col]; colnnz < m_ColPtrs[col + 1]; ++colnnz)
-		{
-			unsigned i = m_Rows[colnnz];
-			markRow(i);
-			for (unsigned rownnz = m_Transpose->m_ColPtrs[i]; rownnz < m_Transpose->m_ColPtrs[i + 1]; ++rownnz)
-			{
-				unsigned j = m_Transpose->m_Rows[rownnz];
-				if (!permuted[j])
-				{
-					cols.emplace_back(j);
-				}
-			}
-		}
-
-		for (unsigned newCol = sliceStart + 1; newCol < sliceEnd; ++newCol)
-		{
-			double bestJackard = -1;
-			unsigned bestCol;
-			#pragma omp parallel num_threads(omp_get_max_threads())
-			{
-				double myBestJackard = -1;
-				unsigned myBestCol;
-				#pragma omp parallel for
-				for (unsigned idx = 0; idx < cols.size(); ++idx)
-				{
-					unsigned j = cols[idx];
-					if (permuted[j]) continue;
-		
-					unsigned inter = 0;
-					for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
-					{
-						inter += isMarked(m_Rows[nnz]);
-					}
-					unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
-					unsigned uni = unionSize + deg - inter;
-					double currentJackard = (uni == 0) ? 1 : static_cast<double>(inter) / static_cast<double>(uni); // [0, 1]: 1 full overlap, 0 no overlap
-
-					if (currentJackard > myBestJackard)
-					{
-						myBestJackard = currentJackard;
-						myBestCol = j;
-					}
-				}
-				#pragma omp critical
-				{
-					if (myBestJackard > bestJackard)
-					{
-						bestJackard = myBestJackard;
-						bestCol = myBestCol;
-					}
-				}
-			}
-			if (bestJackard == -1) 
-			{
-				for (unsigned p = 0; p < m_N; ++p)
-				{
-					const auto& pair = degreesSorted[p];
-					if (permuted[pair.second]) continue;
-					bestCol = pair.second;
-				}
-			}
-
-			inversePermutation[bestCol] = newCol;
-			permuted[bestCol] = true;
-
-			for (unsigned colnnz = m_ColPtrs[bestCol]; colnnz < m_ColPtrs[bestCol + 1]; ++colnnz)
-			{
-				unsigned i = m_Rows[colnnz];
-				markRow(i);
-				for (unsigned rownnz = m_Transpose->m_ColPtrs[i]; rownnz < m_Transpose->m_ColPtrs[i + 1]; ++rownnz)
-				{
-					unsigned j = m_Transpose->m_Rows[rownnz];
-					if (!permuted[j])
-					{
-						cols.emplace_back(j);
-					}
-				}
-			}
-		}
-	}
-	applyPermutation(inversePermutation);
-
-	return inversePermutation;
+	return chained;
 }
 
 unsigned* CSC::gorderWithJackard(unsigned sliceSize)

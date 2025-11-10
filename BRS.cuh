@@ -12,43 +12,11 @@
 class BRS: public BitMatrix
 {
 public:
-    struct SliceSetInformation
-    {   
-        unsigned noActive = 0;
-        unsigned noEntered = 0;
-    };
-    struct SliceInformation
-    {
-        unsigned noEntered = 0;
-    };
     struct VSet
     {
         std::vector<unsigned> rows;
         std::vector<MASK> masks;
         unsigned rset;
-    };
-    struct VSetStatistics
-    {
-        double averageBucketPerMask = 0;
-        double averageBucketPerWarp = 0;
-        double averageBucketRangeMask = 0;
-        double averageBucketRangeWarp = 0;
-
-        void operator+=(const VSetStatistics& right)
-        {
-            averageBucketPerMask += right.averageBucketPerMask;
-            averageBucketPerWarp += right.averageBucketPerWarp;
-            averageBucketRangeMask += right.averageBucketRangeMask;
-            averageBucketRangeWarp += right.averageBucketRangeWarp;
-        }
-
-        void operator/=(unsigned right)
-        {
-            averageBucketPerMask /= right;
-            averageBucketPerWarp /= right;
-            averageBucketRangeMask /= right;
-            averageBucketRangeWarp /= right;
-        }
     };
 
 public:
@@ -65,7 +33,7 @@ public:
     void constructFromCSCMatrix(CSC* csc);
     void printBRSData();
     void brsAnalysis();
-    void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time, SliceSetInformation* rsetInformation, SliceSetInformation* vsetInformation, SliceInformation* sliceInformation);
+    void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time);
 
     [[nodiscard]] inline unsigned getN() {return m_N;}
     [[nodiscard]] inline unsigned getSliceSize() {return m_SliceSize;}
@@ -83,8 +51,7 @@ public:
 private:
     void grayCodeOrder(VSet& rset);
     void atomicNoContentionOrder(VSet& rset);
-    VSetStatistics distributeSlices(const VSet& rset, std::vector<VSet>& vsets);
-    VSetStatistics computeVSetStatistics(const VSet& vset);
+    void distributeSlices(const VSet& rset, std::vector<VSet>& vsets);
 
 private:
     unsigned m_N;
@@ -200,16 +167,14 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned fullWork = WARP_SIZE * noMasks;
 
-    VSetStatistics stats;
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
-        VSetStatistics threadStats;
         #pragma omp for
         for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
         {
             std::map<unsigned, MASK> map;
-            std::vector<std::pair<unsigned, MASK>> additionals;
+            std::vector<std::vector<std::pair<unsigned, MASK>>> additionals(m_SliceSize + 1);
          
             unsigned sliceSetColStart = rset * m_SliceSize;
             unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
@@ -255,20 +220,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 if (individual != 0)
                 {
                     map[i] = individual;
-                    if (csc->isRoadNetwork())
-                    {
-                        if (__builtin_popcount(individual) >= ROAD_NETWORK_FUSION_CONSTANT)
-                        {
-                            additionals.emplace_back(i, individual);
-                        }
-                    }
-                    else
-                    {
-                        if (__builtin_popcount(individual) >= SOCIAL_NETWORK_FUSION_CONSTANT)
-                        {
-                            additionals.emplace_back(i, individual);
-                        }
-                    }
+                    additionals[__builtin_popcount(individual)].emplace_back(i, individual);
                 }
     
                 i = nextRow;
@@ -278,35 +230,38 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             unsigned left = (fullWork - (map.size() - noComplete));
             unsigned added = 0;
 
-            if (left != 0)
+            if (csc->isRoadNetwork() && (left != 0))
             {
-                while (true)
+                for (unsigned popCount = m_SliceSize; popCount > 0; --popCount)
                 {
-                    std::vector<std::pair<unsigned, MASK>> next;
-                    bool progressed = false;
-
-                    for (const auto& add: additionals)
+                    while (true)
                     {
-                        const unsigned j = add.first;
-                        for (unsigned ptr = colPtrs[j]; ptr < colPtrs[j + 1]; ++ptr)
+                        std::vector<std::vector<std::pair<unsigned, MASK>>> next(m_SliceSize + 1);
+                        bool progressed = false;
+
+                        for (const auto& add: additionals[popCount])
                         {
-                            const unsigned i = rows[ptr];
-                            if (map.contains(i)) continue;
-
-                            map[i] = add.second;
-                            next.emplace_back(i, add.second);
-                            progressed = true;
-                            ++added;
-
-                            if (added == left)
+                            const unsigned j = add.first;
+                            for (unsigned ptr = colPtrs[j]; ptr < colPtrs[j + 1]; ++ptr)
                             {
-                                goto end;
+                                const unsigned i = rows[ptr];
+                                if (map.contains(i)) continue;
+
+                                map[i] = add.second;
+                                next[popCount].emplace_back(i, add.second);
+                                progressed = true;
+                                ++added;
+
+                                if (added == left)
+                                {
+                                    goto end;
+                                }
                             }
                         }
-                    }
-                    if (!progressed) break;
+                        if (!progressed) break;
 
-                    additionals.swap(next);
+                        additionals.swap(next);
+                    }
                 }
             }
 
@@ -319,13 +274,9 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 realSet.masks.emplace_back(slice.second);
             }
 
-            this->grayCodeOrder(realSet);
+            //this->grayCodeOrder(realSet);
     
-            threadStats += this->distributeSlices(realSet, rsets[rset]);
-        }
-        #pragma omp critical
-        {
-            stats += threadStats;
+            this->distributeSlices(realSet, rsets[rset]);
         }
     }
     std::vector<VSet> vsets;
@@ -338,12 +289,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     }
     rsets.clear();
     m_NoVirtualSliceSets = vsets.size();
-
-    stats /= m_NoVirtualSliceSets;
-    std::cout << "Average buckets per mask: " << stats.averageBucketPerMask << std::endl;
-    std::cout << "Average buckets per warp: " << stats.averageBucketPerWarp << std::endl;
-    std::cout << "Average bucket range per mask: " << stats.averageBucketRangeMask << std::endl;
-    std::cout << "Average bucket range per warp: " << stats.averageBucketRangeWarp << std::endl;
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
     std::fill(m_RealPtrs, m_RealPtrs + m_NoRealSliceSets + 1, 0);
@@ -481,12 +426,10 @@ void BRS::atomicNoContentionOrder(VSet& rset)
     rset = std::move(newSet);
 }
 
-BRS::VSetStatistics BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
+void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
 {
     unsigned noMasks = MASK_BITS / m_SliceSize;
     unsigned fullWork = WARP_SIZE * noMasks;
-
-    VSetStatistics stats;
 
     unsigned noComplete = rset.rows.size() / fullWork;
     for (unsigned complete = 0; complete < noComplete; ++complete)
@@ -505,7 +448,6 @@ BRS::VSetStatistics BRS::distributeSlices(const VSet& rset, std::vector<VSet>& v
             }
             vset.masks.emplace_back(cumulative);
         }
-        stats += this->computeVSetStatistics(vset);
         vsets.emplace_back(vset);
     }
 
@@ -562,64 +504,8 @@ BRS::VSetStatistics BRS::distributeSlices(const VSet& rset, std::vector<VSet>& v
                 vset.masks.emplace_back(cumulative);
             }
         }
-
-        stats += this->computeVSetStatistics(vset);
         vsets.emplace_back(vset);
     }
-
-    return stats;
-}
-
-BRS::VSetStatistics BRS::computeVSetStatistics(const VSet& vset)
-{
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-    VSetStatistics stats;
-
-    std::unordered_map<unsigned, unsigned> warpBuckets;
-    unsigned minWarp = UNSIGNED_MAX;
-    unsigned maxWarp = 0;
-    for (unsigned mask = 0; mask < noMasks; ++mask)
-    {
-        std::unordered_map<unsigned, unsigned> maskBuckets;
-        unsigned minMask = UNSIGNED_MAX;
-        unsigned maxMask = 0;
-        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
-        {
-            unsigned current = thread * noMasks + mask;
-            if (current >= vset.rows.size()) continue;
-            unsigned bucket = vset.rows[current] / MASK_BITS;
-            if (maskBuckets.find(bucket) != maskBuckets.end())
-            {
-                ++maskBuckets[bucket];
-            }
-            else
-            {
-                maskBuckets[bucket] = 1;
-            }
-            if (warpBuckets.find(bucket) != warpBuckets.end())
-            {
-                ++warpBuckets[bucket];
-            }
-            else
-            {
-                warpBuckets[bucket] = 1;
-            }
-            if (bucket < minMask) minMask = bucket;
-            if (bucket > maxMask) maxMask = bucket;
-            if (bucket < minWarp) minWarp = bucket;
-            if (bucket > maxWarp) maxWarp = bucket;
-        }
-        
-        stats.averageBucketPerMask += maskBuckets.size();
-        stats.averageBucketRangeMask += (maxMask - minMask);
-    }
-    stats.averageBucketPerMask /= noMasks;
-    stats.averageBucketRangeMask /= noMasks;
-    
-    stats.averageBucketPerWarp = warpBuckets.size();
-    stats.averageBucketRangeWarp = (maxWarp - minWarp);
-
-    return stats;
 }
 
 void BRS::printBRSData()
@@ -751,42 +637,11 @@ void BRS::brsAnalysis()
     }
     m_File << std::endl;
 
-    m_File << "Source\tTotalLevels\tTotalVisited\tTime(ms)\tAvgRSetEntrance\tAvgVSetEntrance\tAvgSliceEntrance" << std::endl;
+    m_File << "Source\tTotalLevels\tTotalVisited\tTime(ms)" << std::endl;
 }
 
-void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time, SliceSetInformation* rsetInformation, SliceSetInformation* vsetInformation, SliceInformation* sliceInformation)
+void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time)
 {
-    double averageRSet = 0;
-    for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
-    {
-        SliceSetInformation set = rsetInformation[rset];
-        averageRSet += set.noEntered;
-    }
-    averageRSet /= m_NoRealSliceSets;
-    
-    double averageVSetActive = 0;
-    double averageVSet = 0;
-    for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
-    {
-        SliceSetInformation set = vsetInformation[vset];
-        averageVSetActive += set.noActive;
-        averageVSet += set.noEntered;
-    }
-    averageVSetActive /= m_NoVirtualSliceSets;
-    averageVSet /= m_NoVirtualSliceSets;
-
-    double averageSlice = 0;
-    for (unsigned slice = 0; slice < m_NoSlices; ++slice)
-    {
-        SliceInformation s = sliceInformation[slice];
-        averageSlice += s.noEntered;
-    }
-    averageSlice /= (m_NoSlices - m_NoPaddedSlices);
-
-    delete[] rsetInformation;
-    delete[] vsetInformation;
-    delete[] sliceInformation;
-
-    fileFlush(m_File, source); fileFlush(m_File, totalLevels); fileFlush(m_File, totalVisited); fileFlush(m_File, time * 1000); fileFlush(m_File, averageRSet); fileFlush(m_File, averageVSet); fileFlush(m_File, averageSlice);
+    fileFlush(m_File, source); fileFlush(m_File, totalLevels); fileFlush(m_File, totalVisited); fileFlush(m_File, time * 1000);
     m_File << std::endl;
 }

@@ -805,6 +805,7 @@ namespace BRSBFSKernels
                     unsigned temp = (1 << bit);
                     if (fragC[0])
                     {
+                        levels[rows.x] = levelCount;
                         atomicOr(&visitedNext[word], temp);
                     }
 
@@ -813,6 +814,7 @@ namespace BRSBFSKernels
                     temp = (1 << bit);
                     if (fragC[1])
                     {
+                        levels[rows.y] = levelCount;
                         atomicOr(&visitedNext[word], temp);
                     }
 
@@ -821,6 +823,7 @@ namespace BRSBFSKernels
                     temp = (1 << bit);
                     if (fragC[2])
                     {
+                        levels[rows.z] = levelCount;
                         atomicOr(&visitedNext[word], temp);
                     }
 
@@ -829,6 +832,7 @@ namespace BRSBFSKernels
                     temp = (1 << bit);
                     if (fragC[3])
                     {
+                        levels[rows.w] = levelCount;
                         atomicOr(&visitedNext[word], temp);
                     }
                 }
@@ -879,6 +883,7 @@ namespace BRSBFSKernels
                         unsigned temp = (1 << bit);
                         if (fragC[0])
                         {
+                            levels[rows.x] = levelCount;
                             atomicOr(&visitedNext[word], temp);
                         }
 
@@ -887,6 +892,7 @@ namespace BRSBFSKernels
                         temp = (1 << bit);
                         if (fragC[1])
                         {
+                            levels[rows.y] = levelCount;
                             atomicOr(&visitedNext[word], temp);
                         }
 
@@ -895,6 +901,7 @@ namespace BRSBFSKernels
                         temp = (1 << bit);
                         if (fragC[2])
                         {
+                            levels[rows.z] = levelCount;
                             atomicOr(&visitedNext[word], temp);
                         }
 
@@ -903,6 +910,7 @@ namespace BRSBFSKernels
                         temp = (1 << bit);
                         if (fragC[3])
                         {
+                            levels[rows.w] = levelCount;
                             atomicOr(&visitedNext[word], temp);
                         }
                     }
@@ -1323,6 +1331,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     const unsigned DIRECTION_THRESHOLD = noSliceSets * DIRECTION_SWITCHING_CONSTANT; // vset- or rset- based?
 
     BFSResult result;
+    result.sourceVertex = sourceVertex;
     result.levels = new unsigned[n];
     std::fill(result.levels, result.levels + n, UNSIGNED_MAX);
     result.levels[sourceVertex] = 0;
@@ -1375,7 +1384,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* d_Frontier;
     unsigned* d_SparseFrontierIds;
     unsigned* d_FrontierCurrentSize;
-    unsigned* d_FrontierNext;
+    unsigned* d_VisitedNext;
     unsigned* d_SparseFrontierNextIds;
     unsigned* d_FrontierNextSize;
     unsigned* d_Visited;
@@ -1404,7 +1413,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
@@ -1412,7 +1421,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * n))
 
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_TotalLevels, 0, sizeof(unsigned)))
@@ -1435,16 +1444,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned temp = (1 << bit);
     gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
-
-    // profiling
-    /*
-    BRS::SliceSetInformation* d_RSetInformation;
-    BRS::SliceSetInformation* d_VSetInformation;
-    BRS::SliceInformation* d_SliceInformation;
-    gpuErrchk(cudaMalloc(&d_RSetInformation, sizeof(BRS::SliceSetInformation) * noRealSliceSets))
-    gpuErrchk(cudaMalloc(&d_VSetInformation, sizeof(BRS::SliceSetInformation) * noSliceSets))
-    gpuErrchk(cudaMalloc(&d_SliceInformation, sizeof(BRS::SliceInformation) * noSlices))
-    */
+    gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
     double start = omp_get_wtime();
     void* kernelArgs[] = 
@@ -1460,7 +1460,7 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
                             (void*)&d_Frontier,
                             (void*)&d_SparseFrontierIds,
                             (void*)&d_FrontierCurrentSize,
-                            (void*)&d_FrontierNext,
+                            (void*)&d_VisitedNext,
                             (void*)&d_SparseFrontierNextIds,
                             (void*)&d_FrontierNextSize,
                             (void*)&d_Visited,
@@ -1479,14 +1479,15 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
 
     unsigned* visited = new unsigned[noWords];
     gpuErrchk(cudaMemcpy(visited, d_Visited, sizeof(unsigned) * noWords, cudaMemcpyDeviceToHost))
-    unsigned totalVisited = 0;
+    result.noVisited = 0;
     for (unsigned i = 0; i < noWords; ++i)
     {
-        totalVisited += __builtin_popcount(visited[i]);
+        result.noVisited += __builtin_popcount(visited[i]);
     }
     delete[] visited;
     gpuErrchk(cudaMemcpy(&result.totalLevels, d_TotalLevels, sizeof(unsigned), cudaMemcpyDeviceToHost))
     gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
+    result.time = (end - start);
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
@@ -1499,29 +1500,12 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaFree(d_Frontier))
     gpuErrchk(cudaFree(d_SparseFrontierIds))
     gpuErrchk(cudaFree(d_FrontierCurrentSize))
-    gpuErrchk(cudaFree(d_FrontierNext))
+    gpuErrchk(cudaFree(d_VisitedNext))
     gpuErrchk(cudaFree(d_SparseFrontierNextIds))
     gpuErrchk(cudaFree(d_FrontierNextSize))
     gpuErrchk(cudaFree(d_Visited))
     gpuErrchk(cudaFree(d_TotalLevels))
     gpuErrchk(cudaFree(d_Levels))
 
-    BRS::SliceSetInformation* h_RSetInformation = new BRS::SliceSetInformation[noRealSliceSets];
-    BRS::SliceSetInformation* h_VSetInformation = new BRS::SliceSetInformation[noSliceSets];
-    BRS::SliceInformation* h_SliceInformation = new BRS::SliceInformation[noSlices];
-
-    /*
-    gpuErrchk(cudaMemcpy(h_RSetInformation, d_RSetInformation, sizeof(BRS::SliceSetInformation) * noRealSliceSets, cudaMemcpyDeviceToHost))
-    gpuErrchk(cudaMemcpy(h_VSetInformation, d_VSetInformation, sizeof(BRS::SliceSetInformation) * noSliceSets, cudaMemcpyDeviceToHost))
-    gpuErrchk(cudaMemcpy(h_SliceInformation, d_SliceInformation, sizeof(BRS::SliceInformation) * noSlices, cudaMemcpyDeviceToHost))
-
-    gpuErrchk(cudaFree(d_RSetInformation))
-    gpuErrchk(cudaFree(d_VSetInformation))
-    gpuErrchk(cudaFree(d_SliceInformation))
-    */
-
-    brs->kernelAnalysis(sourceVertex, result.totalLevels, totalVisited, (end - start), h_RSetInformation, h_VSetInformation, h_SliceInformation);
-
-    result.time = (end - start);
     return result;
 }

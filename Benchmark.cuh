@@ -29,8 +29,7 @@ public:
     Benchmark& operator=(Benchmark&& other) noexcept = delete;
     
     void main();
-    double runBRS(const Matrix& matrix);
-    double runHBRS(const Matrix& matrix);
+    double run(const Matrix& matrix);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
 };
 
@@ -47,7 +46,6 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     unsigned sourceVertex;
     while (file >> sourceVertex)
     {
-        --sourceVertex;
         sources.emplace_back(inversePermutation[sourceVertex]);   
     }
     file.close();
@@ -59,15 +57,15 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
-        {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
-        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
+        {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
+        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
+        {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
+        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
         {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
-        {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
         {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
         {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
         {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
@@ -76,25 +74,36 @@ void Benchmark::main()
     for (const auto& matrix: matrices)
     {
         std::cout << "Matrix: " << matrix.filename << std::endl;
-        double brs = runBRS(matrix);
-        std::cout << "BRS time: " << brs << std::endl;
+        double time = run(matrix);
+        std::cout << "Time: " << time << std::endl;
         std::cout << "******************************" << std::endl;
     }
 }
 
-double Benchmark::runBRS(const Matrix& matrix)
+double Benchmark::run(const Matrix& matrix)
 {
     unsigned sliceSize = 8;
 
+    // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
+    //
 
-    unsigned* inversePermutation = csc->gorderWithJackard(sliceSize);
-    /*
-    if (csc->checkSymmetry()) inversePermutation = csc->rcm();
+    // csc ordering
+    unsigned* inversePermutation = nullptr;
+    if (csc->checkSymmetry()) inversePermutation = csc->rcmWithJackard(sliceSize);
     else inversePermutation = csc->gorderWithJackard(sliceSize);
-    */
+    if (inversePermutation == nullptr)
+    {
+        inversePermutation = new unsigned[csc->getN()];
+        for (unsigned i = 0; i < csc->getN(); ++i)
+        {
+            inversePermutation[i] = i;
+        }
+    }
+    //
 
+    // brs
     std::ofstream file(matrix.filename + ".csv");
     bool fullPadding;
     std::string binaryName;
@@ -118,21 +127,16 @@ double Benchmark::runBRS(const Matrix& matrix)
     {
         brs->constructFromBinary(binaryName);
     }
+    //
 
+    // kernel run
     BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
-    if (inversePermutation == nullptr)
-    {
-        inversePermutation = new unsigned[csc->getN()];
-        for (unsigned i = 0; i < csc->getN(); ++i)
-        {
-            inversePermutation[i] = i;
-        }
-    }
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
     unsigned nRun = 5;
     unsigned nIgnore = 2;
     double total = 0;
     unsigned iter = 0;
+    std::vector<BFSResult> results;
     for (const auto source: sources)
     {
         double run = 0;
@@ -141,9 +145,9 @@ double Benchmark::runBRS(const Matrix& matrix)
             BFSResult result = kernel->runBFS(source);
             if (i >= nIgnore)
             {
+                results.emplace_back(result);
                 run += result.time;
             }
-            delete[] result.levels;
         }
     
         run /= (nRun - nIgnore);
@@ -151,12 +155,38 @@ double Benchmark::runBRS(const Matrix& matrix)
         ++iter;
     }
     total /= iter;
+    //
 
+    unsigned* permutation = new unsigned[csc->getN()];
+    for (unsigned i = 0; i < csc->getN(); ++i)
+    {
+        permutation[inversePermutation[i]] = i;
+    }
+
+    // result save
+    for (auto& result: results)
+    {
+        result.sourceVertex = permutation[result.sourceVertex];
+        unsigned* newLevels = new unsigned[csc->getN()];
+        for (unsigned old = 0; old < csc->getN(); ++old)
+        {
+            newLevels[old] = result.levels[inversePermutation[old]];
+        }
+        delete[] result.levels;
+        result.levels = newLevels;
+        brs->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
+        delete[] result.levels;
+    }
+    //
+
+    // cleanup
     file.close();
     delete csc;
     delete brs;
     delete kernel;
     delete[] inversePermutation;
+    delete[] permutation;
+    //
 
     return total * 1000;
 }

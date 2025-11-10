@@ -11,8 +11,6 @@
 using namespace cooperative_groups;
 
 #define ROAD_NETWORK_DEGREE 4
-#define ROAD_NETWORK_FUSION_CONSTANT 1
-#define SOCIAL_NETWORK_FUSION_CONSTANT 9
 #define DIRECTION_SWITCHING_CONSTANT 1
 
 #define M 8

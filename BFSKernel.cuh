@@ -5,8 +5,10 @@
 struct BFSResult
 {
     double time;
+    unsigned sourceVertex;
     unsigned* levels;
     unsigned totalLevels;
+    unsigned noVisited;
 };
 
 class BFSKernel
