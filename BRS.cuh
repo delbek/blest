@@ -14,9 +14,9 @@ class BRS: public BitMatrix
 public:
     struct VSet
     {
+        unsigned rset;
         std::vector<unsigned> rows;
         std::vector<MASK> masks;
-        unsigned rset;
     };
 
 public:
@@ -165,7 +165,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         throw std::runtime_error("Invalid slice size provided.");
     }
     unsigned noMasks = MASK_BITS / m_SliceSize;
-    unsigned fullWork = WARP_SIZE * noMasks;
 
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
@@ -174,7 +173,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
         {
             std::map<unsigned, MASK> map;
-            std::vector<std::vector<std::pair<unsigned, MASK>>> additionals(m_SliceSize + 1);
          
             unsigned sliceSetColStart = rset * m_SliceSize;
             unsigned sliceSetColEnd = std::min(m_N, sliceSetColStart + m_SliceSize);
@@ -220,52 +218,11 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 if (individual != 0)
                 {
                     map[i] = individual;
-                    additionals[__builtin_popcount(individual)].emplace_back(i, individual);
                 }
     
                 i = nextRow;
             }
 
-            unsigned noComplete = (map.size() / fullWork) * fullWork;
-            unsigned left = (fullWork - (map.size() - noComplete));
-            unsigned added = 0;
-
-            if (csc->isRoadNetwork() && (left != 0))
-            {
-                for (unsigned popCount = m_SliceSize; popCount > 0; --popCount)
-                {
-                    while (true)
-                    {
-                        std::vector<std::vector<std::pair<unsigned, MASK>>> next(m_SliceSize + 1);
-                        bool progressed = false;
-
-                        for (const auto& add: additionals[popCount])
-                        {
-                            const unsigned j = add.first;
-                            for (unsigned ptr = colPtrs[j]; ptr < colPtrs[j + 1]; ++ptr)
-                            {
-                                const unsigned i = rows[ptr];
-                                if (map.contains(i)) continue;
-
-                                map[i] = add.second;
-                                next[popCount].emplace_back(i, add.second);
-                                progressed = true;
-                                ++added;
-
-                                if (added == left)
-                                {
-                                    goto end;
-                                }
-                            }
-                        }
-                        if (!progressed) break;
-
-                        additionals.swap(next);
-                    }
-                }
-            }
-
-        end:
             VSet realSet;
             realSet.rset = rset;
             for (const auto& slice: map)
