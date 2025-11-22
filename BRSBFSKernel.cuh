@@ -14,23 +14,24 @@ namespace BRSBFSKernels
         ptr1 = temp;
     }
 
-    __global__ void BRSBFS8EnhancedNoMasks4FullPad(
-                                                    const unsigned* const __restrict__ sliceSetPtrs,
-                                                    const unsigned* const __restrict__ virtualToReal,
-                                                    const unsigned* const __restrict__ realPtrs,
-                                                    const unsigned* const __restrict__ rowIds,
-                                                    const MASK*     const __restrict__ masks,
-                                                    const unsigned* const __restrict__ noWordsPtr,
-                                                    // current
-                                                    unsigned*       const __restrict__ levels,
-                                                    unsigned*             __restrict__ frontier,
-                                                    unsigned*             __restrict__ sparseFrontierIds,
-                                                    unsigned*             __restrict__ frontierCurrentSizePtr,
-                                                    // next
-                                                    unsigned*             __restrict__ frontierNext,
-                                                    unsigned*             __restrict__ sparseFrontierNextIds,
-                                                    unsigned*             __restrict__ frontierNextSizePtr
-                                                    )
+    __global__ void BRSBFS8EnhancedNoMasks2(
+                                        const unsigned* const __restrict__ sliceSetPtrs,
+                                        const unsigned* const __restrict__ virtualToReal,
+                                        const unsigned* const __restrict__ realPtrs,
+                                        const unsigned* const __restrict__ rowIds,
+                                        const MASK*     const __restrict__ masks,
+                                        const unsigned* const __restrict__ noWordsPtr,
+                                        // current
+                                        unsigned*       const __restrict__ levels,
+                                        unsigned*       const __restrict__ frontier,
+                                        unsigned*       const __restrict__ visited,
+                                        unsigned*             __restrict__ sparseFrontierIds,
+                                        unsigned*             __restrict__ frontierCurrentSizePtr,
+                                        // next
+                                        unsigned*       const __restrict__ visitedNext,
+                                        unsigned*             __restrict__ sparseFrontierNextIds,
+                                        unsigned*             __restrict__ frontierNextSizePtr
+                                        )
     {
         // MASK_BITS must be 32 BITS!
         
@@ -44,7 +45,158 @@ namespace BRSBFSKernels
         const unsigned noWords = *noWordsPtr;
         unsigned levelCount = 0;
 
-        const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
+        const uint2* row2Ids = reinterpret_cast<const uint2*>(rowIds);
+        unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
+
+        bool cont = true;
+        while (cont)
+        {
+            ++levelCount;
+            unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
+            {
+                unsigned vset = sparseFrontierIds[i];
+                unsigned rset = virtualToReal[vset];
+                MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
+
+                unsigned tileStart = (sliceSetPtrs[vset] >> 1);
+                unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 1);
+
+                unsigned tile = tileStart + laneID;
+                uint2 rows = {0, 0};
+                MASK mask = 0;
+                if (tile < tileEnd)
+                {
+                    rows = row2Ids[tile];
+                    mask = masks[tile];
+                }
+
+                MASK fragB = 0;
+                {
+                    unsigned res = laneID % 9;
+                    if (res == 0)
+                    {
+                        fragB = origFragB;
+                    }
+                    else if (res == 4)
+                    {
+                        fragB = (origFragB << 8);
+                    }
+                }
+                unsigned fragC[2];
+                fragC[0] = fragC[1] = 0;
+                MASK fragA = (mask & 0x0000FFFF);
+                m8n8k128(fragC, fragA, fragB);
+
+                unsigned word = rows.x >> 5;
+                unsigned bit = rows.x & 31;
+                unsigned temp = (1 << bit);
+                if (fragC[0])
+                {
+                    atomicOr(&visitedNext[word], temp);
+                }
+
+                word = rows.y >> 5;
+                bit = rows.y & 31;
+                temp = (1 << bit);
+                if (fragC[1])
+                {
+                    atomicOr(&visitedNext[word], temp);
+                }
+            }
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+            grid.sync();
+            for (unsigned i = threadID; i < noWords; i += noThreads)
+            {
+                unsigned next = visitedNext[i];
+                unsigned diff = visited[i] ^ next;
+                unsigned rssOffset = i << 2;
+                if (diff != 0)
+                {
+                    visited[i] = next;
+                    frontier[i] = diff;
+                    #pragma unroll 4
+                    for (unsigned set = 0; set < 4; ++set)
+                    {
+                        MASK sliceMask = ((diff >> (set << 3)) & 0x000000FF);
+                        if (sliceMask != 0)
+                        {
+                            unsigned rss = rssOffset + set;
+                            while (sliceMask)
+                            {
+                                unsigned vertex = (rss << 3) + ((__ffs(sliceMask) - 1) & 7);
+                                levels[vertex] = levelCount;
+                                sliceMask &= sliceMask - 1;
+                            }
+                            unsigned start = realPtrs[rss];
+                            unsigned end = realPtrs[rss + 1];
+                            unsigned scan = end - start;
+
+                            auto coalesced = coalesced_threads();
+                            unsigned lane = coalesced.thread_rank();
+
+                            for (unsigned stride = 1; stride < coalesced.size(); stride <<= 1)
+                            {
+                                unsigned from = coalesced.shfl_up(scan, stride);
+                                if (lane >= stride) scan += from;
+                            }
+                            
+                            unsigned base;
+                            if (lane == coalesced.size() - 1)
+                            {
+                                base = atomicAdd(frontierNextSizePtr, scan);
+                            }
+                            base = coalesced.shfl(base, coalesced.size() - 1);
+                            for (unsigned vset = start; vset < end; ++vset)
+                            {
+                                sparseFrontierNextIds[base + --scan] = vset;
+                            }
+                        }
+                    }
+                }
+            }
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            swap<unsigned>(sparseFrontierIds, sparseFrontierNextIds);
+            swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
+            grid.sync();
+        }
+    }
+    
+    __global__ void BRSBFS8EnhancedNoMasks2FullPad(
+                                                const unsigned* const __restrict__ sliceSetPtrs,
+                                                const unsigned* const __restrict__ virtualToReal,
+                                                const unsigned* const __restrict__ realPtrs,
+                                                const unsigned* const __restrict__ rowIds,
+                                                const MASK*     const __restrict__ masks,
+                                                const unsigned* const __restrict__ noWordsPtr,
+                                                // current
+                                                unsigned*       const __restrict__ levels,
+                                                unsigned*             __restrict__ frontier,
+                                                unsigned*             __restrict__ sparseFrontierIds,
+                                                unsigned*             __restrict__ frontierCurrentSizePtr,
+                                                // next
+                                                unsigned*             __restrict__ frontierNext,
+                                                unsigned*             __restrict__ sparseFrontierNextIds,
+                                                unsigned*             __restrict__ frontierNextSizePtr
+                                                )
+    {
+        // MASK_BITS must be 32 BITS!
+        
+        auto grid = this_grid();
+        const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned noThreads = gridDim.x * blockDim.x;
+        const unsigned noWarps = noThreads / WARP_SIZE;
+        const unsigned warpID = threadID / WARP_SIZE;
+        const unsigned laneID = threadID % WARP_SIZE;
+
+        const unsigned noWords = *noWordsPtr;
+        unsigned levelCount = 0;
+
+        const uint2* row2Ids = reinterpret_cast<const uint2*>(rowIds);
 
         bool cont = true;
         while (cont)
@@ -58,8 +210,8 @@ namespace BRSBFSKernels
                 unsigned rset = virtualToReal[vset];
                 MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
 
-                unsigned tile = (vset << 5) + laneID; // tile = vset * 128 + laneID * 4 - tile / 4 = vset * 32 + laneID
-                uint4 rows = row4Ids[tile];
+                unsigned tile = (vset << 5) + laneID; // tile = vset * 64 + laneID * 2 - tile / 2 = vset * 32 + laneID
+                uint2 rows = row2Ids[tile];
                 MASK mask = masks[tile];
 
                 MASK fragB = 0;
@@ -74,14 +226,10 @@ namespace BRSBFSKernels
                         fragB = (origFragB << 8);
                     }
                 }
-                unsigned fragC[4];
+                unsigned fragC[2];
                 fragC[0] = fragC[1] = 0;
                 MASK fragA = (mask & 0x0000FFFF);
                 m8n8k128(fragC, fragA, fragB);
-
-                fragC[2] = fragC[3] = 0;
-                fragA = ((mask & 0xFFFF0000) >> 16);
-                m8n8k128(&fragC[2], fragA, fragB);
 
                 unsigned word = rows.x >> 5;
                 unsigned bit = rows.x & 31;
@@ -125,60 +273,6 @@ namespace BRSBFSKernels
                         if ((old & sliceMask) == 0)
                         {
                             unsigned rss = rows.y >> 3;
-                            unsigned start = realPtrs[rss];
-                            unsigned end = realPtrs[rss + 1];
-                            unsigned size = end - start;
-                            unsigned loc = atomicAdd(frontierNextSizePtr, size);
-                            for (unsigned vset = start; vset < end; ++vset)
-                            {
-                                sparseFrontierNextIds[loc++] = vset;
-                            }
-                        }
-                    }
-                }
-
-                word = rows.z >> 5;
-                bit = rows.z & 31;
-                temp = (1 << bit);
-                if (fragC[2])
-                {
-                    unsigned oldLevel = levels[rows.z];
-                    if (levelCount < oldLevel)
-                    {
-                        levels[rows.z] = levelCount;
-                        unsigned old = atomicOr(&frontierNext[word], temp);
-                        unsigned sliceIdx = (bit >> 3);
-                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
-                        if ((old & sliceMask) == 0)
-                        {
-                            unsigned rss = rows.z >> 3;
-                            unsigned start = realPtrs[rss];
-                            unsigned end = realPtrs[rss + 1];
-                            unsigned size = end - start;
-                            unsigned loc = atomicAdd(frontierNextSizePtr, size);
-                            for (unsigned vset = start; vset < end; ++vset)
-                            {
-                                sparseFrontierNextIds[loc++] = vset;
-                            }
-                        }
-                    }
-                }
-
-                word = rows.w >> 5;
-                bit = rows.w & 31;
-                temp = (1 << bit);
-                if (fragC[3])
-                {
-                    unsigned oldLevel = levels[rows.w];
-                    if (levelCount < oldLevel)
-                    {
-                        levels[rows.w] = levelCount;
-                        unsigned old = atomicOr(&frontierNext[word], temp);
-                        unsigned sliceIdx = (bit >> 3);
-                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
-                        if ((old & sliceMask) == 0)
-                        {
-                            unsigned rss = rows.w >> 3;
                             unsigned start = realPtrs[rss];
                             unsigned end = realPtrs[rss + 1];
                             unsigned size = end - start;
@@ -383,6 +477,204 @@ namespace BRSBFSKernels
             grid.sync();
         }
     }
+
+    __global__ void BRSBFS8EnhancedNoMasks4FullPad(
+                                                const unsigned* const __restrict__ sliceSetPtrs,
+                                                const unsigned* const __restrict__ virtualToReal,
+                                                const unsigned* const __restrict__ realPtrs,
+                                                const unsigned* const __restrict__ rowIds,
+                                                const MASK*     const __restrict__ masks,
+                                                const unsigned* const __restrict__ noWordsPtr,
+                                                // current
+                                                unsigned*       const __restrict__ levels,
+                                                unsigned*             __restrict__ frontier,
+                                                unsigned*             __restrict__ sparseFrontierIds,
+                                                unsigned*             __restrict__ frontierCurrentSizePtr,
+                                                // next
+                                                unsigned*             __restrict__ frontierNext,
+                                                unsigned*             __restrict__ sparseFrontierNextIds,
+                                                unsigned*             __restrict__ frontierNextSizePtr
+                                                )
+    {
+        // MASK_BITS must be 32 BITS!
+        
+        auto grid = this_grid();
+        const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned noThreads = gridDim.x * blockDim.x;
+        const unsigned noWarps = noThreads / WARP_SIZE;
+        const unsigned warpID = threadID / WARP_SIZE;
+        const unsigned laneID = threadID % WARP_SIZE;
+
+        const unsigned noWords = *noWordsPtr;
+        unsigned levelCount = 0;
+
+        const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
+
+        bool cont = true;
+        while (cont)
+        {
+            ++levelCount;
+            unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
+            unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            for (unsigned i = warpID; i < currentFrontierSize; i += noWarps)
+            {
+                unsigned vset = sparseFrontierIds[i];
+                unsigned rset = virtualToReal[vset];
+                MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
+
+                unsigned tile = (vset << 5) + laneID; // tile = vset * 128 + laneID * 4 - tile / 4 = vset * 32 + laneID
+                uint4 rows = row4Ids[tile];
+                MASK mask = masks[tile];
+
+                MASK fragB = 0;
+                {
+                    unsigned res = laneID % 9;
+                    if (res == 0)
+                    {
+                        fragB = origFragB;
+                    }
+                    else if (res == 4)
+                    {
+                        fragB = (origFragB << 8);
+                    }
+                }
+                unsigned fragC[4];
+                fragC[0] = fragC[1] = 0;
+                MASK fragA = (mask & 0x0000FFFF);
+                m8n8k128(fragC, fragA, fragB);
+
+                fragC[2] = fragC[3] = 0;
+                fragA = ((mask & 0xFFFF0000) >> 16);
+                m8n8k128(&fragC[2], fragA, fragB);
+
+                unsigned word = rows.x >> 5;
+                unsigned bit = rows.x & 31;
+                unsigned temp = (1 << bit);
+                if (fragC[0])
+                {
+                    unsigned oldLevel = levels[rows.x];
+                    if (levelCount < oldLevel)
+                    {
+                        levels[rows.x] = levelCount;
+                        unsigned old = atomicOr(&frontierNext[word], temp);
+                        unsigned sliceIdx = (bit >> 3);
+                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                        if ((old & sliceMask) == 0)
+                        {
+                            unsigned rss = rows.x >> 3;
+                            unsigned start = realPtrs[rss];
+                            unsigned end = realPtrs[rss + 1];
+                            unsigned size = end - start;
+                            unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                            for (unsigned vset = start; vset < end; ++vset)
+                            {
+                                sparseFrontierNextIds[loc++] = vset;
+                            }
+                        }
+                    }
+                }
+
+                word = rows.y >> 5;
+                bit = rows.y & 31;
+                temp = (1 << bit);
+                if (fragC[1])
+                {
+                    unsigned oldLevel = levels[rows.y];
+                    if (levelCount < oldLevel)
+                    {
+                        levels[rows.y] = levelCount;
+                        unsigned old = atomicOr(&frontierNext[word], temp);
+                        unsigned sliceIdx = (bit >> 3);
+                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                        if ((old & sliceMask) == 0)
+                        {
+                            unsigned rss = rows.y >> 3;
+                            unsigned start = realPtrs[rss];
+                            unsigned end = realPtrs[rss + 1];
+                            unsigned size = end - start;
+                            unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                            for (unsigned vset = start; vset < end; ++vset)
+                            {
+                                sparseFrontierNextIds[loc++] = vset;
+                            }
+                        }
+                    }
+                }
+
+                word = rows.z >> 5;
+                bit = rows.z & 31;
+                temp = (1 << bit);
+                if (fragC[2])
+                {
+                    unsigned oldLevel = levels[rows.z];
+                    if (levelCount < oldLevel)
+                    {
+                        levels[rows.z] = levelCount;
+                        unsigned old = atomicOr(&frontierNext[word], temp);
+                        unsigned sliceIdx = (bit >> 3);
+                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                        if ((old & sliceMask) == 0)
+                        {
+                            unsigned rss = rows.z >> 3;
+                            unsigned start = realPtrs[rss];
+                            unsigned end = realPtrs[rss + 1];
+                            unsigned size = end - start;
+                            unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                            for (unsigned vset = start; vset < end; ++vset)
+                            {
+                                sparseFrontierNextIds[loc++] = vset;
+                            }
+                        }
+                    }
+                }
+
+                word = rows.w >> 5;
+                bit = rows.w & 31;
+                temp = (1 << bit);
+                if (fragC[3])
+                {
+                    unsigned oldLevel = levels[rows.w];
+                    if (levelCount < oldLevel)
+                    {
+                        levels[rows.w] = levelCount;
+                        unsigned old = atomicOr(&frontierNext[word], temp);
+                        unsigned sliceIdx = (bit >> 3);
+                        unsigned sliceMask = ((0xFF) << (sliceIdx << 3));
+                        if ((old & sliceMask) == 0)
+                        {
+                            unsigned rss = rows.w >> 3;
+                            unsigned start = realPtrs[rss];
+                            unsigned end = realPtrs[rss + 1];
+                            unsigned size = end - start;
+                            unsigned loc = atomicAdd(frontierNextSizePtr, size);
+                            for (unsigned vset = start; vset < end; ++vset)
+                            {
+                                sparseFrontierNextIds[loc++] = vset;
+                            }
+                        }
+                    }
+                }
+            }
+            grid.sync();
+            cont = (*frontierNextSizePtr != 0);
+            swap<unsigned>(frontier, frontierNext);
+            swap<unsigned>(sparseFrontierIds, sparseFrontierNextIds);
+            swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
+            grid.sync();
+            if (threadID == 0)
+            {
+                *frontierNextSizePtr = 0;
+            }
+            if (cont)
+            {
+                for (unsigned i = threadID; i < noWords; i += noThreads)
+                {
+                    frontierNext[i] = 0;
+                }
+            }
+            grid.sync();
+        }
+    }
 };
 
 class BRSBFSKernel: public BFSKernel
@@ -442,6 +734,17 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
         else
         {
             kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks4;
+        }
+    }
+    else if (sliceSize == 8 && noMasks == 2)
+    {
+        if (isFullPadding)
+        {
+            kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks2FullPad;
+        }
+        else
+        {
+            kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedNoMasks2;
         }
     }
     else
@@ -536,64 +839,63 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
-    double start = omp_get_wtime();
-    if (sliceSize == 8 && noMasks == 4)
+    double start;
+    if (isFullPadding)
     {
-        if (isFullPadding)
+        std::array<void*, 13> argsA =
         {
-            std::array<void*, 13> argsA =
-            {
-                (void*)&d_SliceSetPtrs,
-                (void*)&d_VirtualToReal,
-                (void*)&d_RealPtrs,
-                (void*)&d_RowIds,
-                (void*)&d_Masks,
-                (void*)&d_NoWords,
-                (void*)&d_Levels,
-                (void*)&d_Frontier,
-                (void*)&d_SparseFrontierIds,
-                (void*)&d_FrontierCurrentSize,
-                (void*)&d_FrontierNext,
-                (void*)&d_SparseFrontierNextIds,
-                (void*)&d_FrontierNextSize
-            };
+            (void*)&d_SliceSetPtrs,
+            (void*)&d_VirtualToReal,
+            (void*)&d_RealPtrs,
+            (void*)&d_RowIds,
+            (void*)&d_Masks,
+            (void*)&d_NoWords,
+            (void*)&d_Levels,
+            (void*)&d_Frontier,
+            (void*)&d_SparseFrontierIds,
+            (void*)&d_FrontierCurrentSize,
+            (void*)&d_FrontierNext,
+            (void*)&d_SparseFrontierNextIds,
+            (void*)&d_FrontierNextSize
+        };
 
-            gpuErrchk(cudaLaunchCooperativeKernel(
-                kernelPtr,
-                gridSize,
-                blockSize,
-                argsA.data(),
-                allocateSharedMemory(blockSize),
-                0))
-        }
-        else
+        start = omp_get_wtime();
+        gpuErrchk(cudaLaunchCooperativeKernel(
+            kernelPtr,
+            gridSize,
+            blockSize,
+            argsA.data(),
+            allocateSharedMemory(blockSize),
+            0))
+    }
+    else
+    {
+        std::array<void*, 14> argsB =
         {
-            std::array<void*, 14> argsB =
-            {
-                (void*)&d_SliceSetPtrs,
-                (void*)&d_VirtualToReal,
-                (void*)&d_RealPtrs,
-                (void*)&d_RowIds,
-                (void*)&d_Masks,
-                (void*)&d_NoWords,
-                (void*)&d_Levels,
-                (void*)&d_Frontier,
-                (void*)&d_Visited,
-                (void*)&d_SparseFrontierIds,
-                (void*)&d_FrontierCurrentSize,
-                (void*)&d_VisitedNext,
-                (void*)&d_SparseFrontierNextIds,
-                (void*)&d_FrontierNextSize
-            };
+            (void*)&d_SliceSetPtrs,
+            (void*)&d_VirtualToReal,
+            (void*)&d_RealPtrs,
+            (void*)&d_RowIds,
+            (void*)&d_Masks,
+            (void*)&d_NoWords,
+            (void*)&d_Levels,
+            (void*)&d_Frontier,
+            (void*)&d_Visited,
+            (void*)&d_SparseFrontierIds,
+            (void*)&d_FrontierCurrentSize,
+            (void*)&d_VisitedNext,
+            (void*)&d_SparseFrontierNextIds,
+            (void*)&d_FrontierNextSize
+        };
 
-            gpuErrchk(cudaLaunchCooperativeKernel(
-                kernelPtr,
-                gridSize,
-                blockSize,
-                argsB.data(),
-                allocateSharedMemory(blockSize),
-                0))
-        }
+        start = omp_get_wtime();
+        gpuErrchk(cudaLaunchCooperativeKernel(
+            kernelPtr,
+            gridSize,
+            blockSize,
+            argsB.data(),
+            allocateSharedMemory(blockSize),
+            0))
     }
     gpuErrchk(cudaPeekAtLastError())
     gpuErrchk(cudaDeviceSynchronize())

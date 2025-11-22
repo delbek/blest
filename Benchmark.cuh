@@ -57,9 +57,9 @@ void Benchmark::main()
 {
     std::vector<Matrix> matrices = 
     {
+        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
         {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
         {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
         {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
         {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
@@ -82,7 +82,7 @@ void Benchmark::main()
 
 double Benchmark::run(const Matrix& matrix)
 {
-    unsigned sliceSize = 8;
+    constexpr unsigned sliceSize = 8;
 
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
@@ -91,8 +91,15 @@ double Benchmark::run(const Matrix& matrix)
 
     // csc ordering
     unsigned* inversePermutation = nullptr;
-    if (csc->checkSymmetry()) inversePermutation = csc->rcmWithJackard(sliceSize);
-    else inversePermutation = csc->gorderWithJackard(sliceSize);
+    if (csc->isRoadNetwork())
+    {
+        inversePermutation = csc->rcm();
+    }
+    else
+    {
+        inversePermutation = csc->gorderWithJackard(sliceSize);
+    }
+    
     if (inversePermutation == nullptr)
     {
         inversePermutation = new unsigned[csc->getN()];

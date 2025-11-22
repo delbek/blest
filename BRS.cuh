@@ -49,8 +49,6 @@ public:
     [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
 
 private:
-    void grayCodeOrder(VSet& rset);
-    void atomicNoContentionOrder(VSet& rset);
     void distributeSlices(const VSet& rset, std::vector<VSet>& vsets);
 
 private:
@@ -108,7 +106,7 @@ void BRS::saveToBinary(std::string filename)
     out.write(reinterpret_cast<const char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
     out.write(reinterpret_cast<const char*>(m_RealPtrs), (sizeof(unsigned) * (m_NoRealSliceSets + 1)));
     out.write(reinterpret_cast<const char*>(m_RowIds), (sizeof(unsigned) * m_NoSlices));
-    out.write(reinterpret_cast<const char*>(m_Masks), (sizeof(unsigned) * (m_NoSlices / noMasks)));
+    out.write(reinterpret_cast<const char*>(m_Masks), (sizeof(MASK) * (m_NoSlices / noMasks)));
 
     out.close();
 }
@@ -139,8 +137,8 @@ void BRS::constructFromBinary(std::string filename)
     m_RowIds = new unsigned[m_NoSlices];
     in.read(reinterpret_cast<char*>(m_RowIds), (sizeof(unsigned) * m_NoSlices));
 
-    m_Masks = new unsigned[m_NoSlices / noMasks];
-    in.read(reinterpret_cast<char*>(m_Masks), (sizeof(unsigned) * (m_NoSlices / noMasks)));
+    m_Masks = new MASK[m_NoSlices / noMasks];
+    in.read(reinterpret_cast<char*>(m_Masks), (sizeof(MASK) * (m_NoSlices / noMasks)));
 
     in.close();
 
@@ -230,8 +228,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
                 realSet.rows.emplace_back(slice.first);
                 realSet.masks.emplace_back(slice.second);
             }
-
-            //this->grayCodeOrder(realSet);
     
             this->distributeSlices(realSet, rsets[rset]);
         }
@@ -292,95 +288,6 @@ void BRS::constructFromCSCMatrix(CSC* csc)
 
     this->printBRSData();
     this->brsAnalysis();
-}
-
-void BRS::grayCodeOrder(VSet& rset)
-{
-    const unsigned bucketCount = (1 << m_SliceSize);
-
-    std::vector<std::vector<unsigned>> buckets(bucketCount);
-
-    const unsigned n = rset.rows.size();
-    for (unsigned i = 0; i < n; ++i)
-    {
-        unsigned mask = static_cast<unsigned>(rset.masks[i]);
-        buckets[mask].emplace_back(rset.rows[i]);
-    }
-
-    VSet newSet;
-    newSet.rset = rset.rset;
-    newSet.rows.reserve(n);
-    newSet.masks.reserve(n);
-
-    for (unsigned i = 1; i < bucketCount; ++i)
-    {
-        unsigned bucket = i ^ (i >> 1);
-        for (const auto& row: buckets[bucket])
-        {
-            newSet.rows.emplace_back(row);
-            newSet.masks.emplace_back(static_cast<MASK>(bucket));
-        }
-    }
-
-    rset = std::move(newSet);
-}
-
-void BRS::atomicNoContentionOrder(VSet& rset)
-{
-    unsigned noMasks = MASK_BITS / m_SliceSize;
-
-    unsigned noBuckets = (m_N + UNSIGNED_BITS - 1) / UNSIGNED_BITS;
-    std::vector<std::vector<std::tuple<unsigned, MASK, bool>>> buckets(noBuckets);
-
-    unsigned n = rset.rows.size();
-    for (unsigned s = 0; s < rset.rows.size(); ++s)
-    {
-        unsigned row = rset.rows[s];
-        MASK mask = rset.masks[s];
-        unsigned bucketNo = row / UNSIGNED_BITS;
-        buckets[bucketNo].emplace_back(row, mask, false);
-    }
-
-    VSet newSet;
-    newSet.rset = rset.rset;
-    newSet.rows.reserve(n);
-    newSet.masks.reserve(n);
-
-    unsigned iterationCount = (n + noMasks - 1) / noMasks;
-    for (unsigned iter = 0; iter < iterationCount; ++iter)
-    {
-        unsigned added = 0;
-        for (auto& bucket: buckets)
-        {
-            if (added == noMasks) break;
-            for (auto& slice: bucket)
-            {
-                if (std::get<2>(slice) == false)
-                {
-                    newSet.rows.emplace_back(std::get<0>(slice));
-                    newSet.masks.emplace_back(std::get<1>(slice));
-                    std::get<2>(slice) = true;
-                    ++added;
-                    break;
-                }
-            }
-        }
-    }
-    
-    for (auto& bucket: buckets)
-    {
-        for (auto& slice: bucket)
-        {
-            if (std::get<2>(slice) == false)
-            {
-                newSet.rows.emplace_back(std::get<0>(slice));
-                newSet.masks.emplace_back(std::get<1>(slice));
-                std::get<2>(slice) = true;
-            }
-        }
-    }
-
-    rset = std::move(newSet);
 }
 
 void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)

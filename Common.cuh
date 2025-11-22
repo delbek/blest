@@ -42,32 +42,6 @@ __device__ __forceinline__ void m8n8k128(unsigned* const __restrict__ fragC, con
                  : "r"(fragA), "r"(fragB), "r"(fragC[0]), "r"(fragC[1]));
 }
 
-template <typename T>
-__device__ __forceinline__ void load_l1bypass(const T* const __restrict__ ptr, T& val)
-{
-    static_assert(sizeof(T) == 4);
-    asm volatile("ld.global.cg.b32 %0, [%1];"
-                 : "=r"(val)
-                 : "l"(ptr)
-                 : "memory");
-}
-
-__device__ __forceinline__ void loadMask_streaming(const MASK* const __restrict__ ptr, MASK& val)
-{
-    asm volatile("ld.global.cs.b32 %0, [%1];"
-                 : "=r"(val)
-                 : "l"(ptr)
-                 : "memory");
-}
-
-__device__ __forceinline__ void loadRow4Ids_streaming(const uint4* const __restrict__ ptr, uint4& val)
-{
-    asm volatile("ld.global.cs.v4.u32 {%0, %1, %2, %3}, [%4];"
-                 : "=r"(val.x), "=r"(val.y), "=r"(val.z), "=r"(val.w)
-                 : "l"(ptr)
-                 : "memory");
-}
-
 template <class T>
 void fileFlush(std::ofstream& file, T el)
 {
