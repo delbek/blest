@@ -4,6 +4,9 @@
 #include "BRS.cuh"
 #include "BRSBFSKernel.cuh"
 #include <filesystem>
+#include "SuiteSparseMatrixDownloader.hpp"
+
+#define MATRIX_DIRECTORY "/arf/scratch/delbek/"
 
 struct Matrix
 {
@@ -55,26 +58,45 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
 
 void Benchmark::main()
 {
-    std::vector<Matrix> matrices = 
-    {
-        {"/arf/scratch/delbek/GAP-road.mtx", "/arf/scratch/delbek/GAP-road.txt", true, false},
-        {"/arf/scratch/delbek/roadNet-CA.mtx", "/arf/scratch/delbek/roadNet-CA.txt", true, true},
-        {"/arf/scratch/delbek/rgg_n_2_24_s0.mtx", "/arf/scratch/delbek/rgg_n_2_24_s0.txt", true, true},
-        {"/arf/scratch/delbek/indochina-2004.mtx", "/arf/scratch/delbek/indochina-2004.txt", false, true},
-        {"/arf/scratch/delbek/wikipedia-20070206.mtx", "/arf/scratch/delbek/wikipedia-20070206.txt", false, true},
-        {"/arf/scratch/delbek/eu-2005.mtx", "/arf/scratch/delbek/eu-2005.txt", false, true},
-        {"/arf/scratch/delbek/wb-edu.mtx", "/arf/scratch/delbek/wb-edu.txt", false, true},
-        {"/arf/scratch/delbek/uk-2005.mtx", "/arf/scratch/delbek/uk-2005.txt", false, true},
-        {"/arf/scratch/delbek/GAP-twitter.mtx", "/arf/scratch/delbek/GAP-twitter.txt", false, false},
-        {"/arf/scratch/delbek/GAP-web.mtx", "/arf/scratch/delbek/GAP-web.txt", false, false},
-        {"/arf/scratch/delbek/GAP-kron.mtx", "/arf/scratch/delbek/GAP-kron.txt", true, false},
-        {"/arf/scratch/delbek/GAP-urand.mtx", "/arf/scratch/delbek/GAP-urand.txt", true, false}
+    SuiteSparseDownloader downloader;
+    SuiteSparseDownloader::MatrixFilter filter;
+
+    /* GAP-Benchmark Suite */
+    filter.names = {
+        "GAP-twitter",
+        "GAP-road",
+        "GAP-web"
+        //"GAP-kron",
+        //"GAP-urand"
     };
+
+    std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
+    downloader.downloadMatrices(MATRIX_DIRECTORY, matrices);
 
     for (const auto& matrix: matrices)
     {
-        std::cout << "Matrix: " << matrix.filename << std::endl;
-        double time = run(matrix);
+        if (!matrix.isValid) continue;
+
+        std::cout
+            << "id: "               << matrix.id               << '\n'
+            << "groupName: "        << matrix.groupName        << '\n'
+            << "name: "             << matrix.name             << '\n'
+            << "rows: "             << matrix.rows             << '\n'
+            << "cols: "             << matrix.cols             << '\n'
+            << "nonzeros: "         << matrix.nonzeros         << '\n'
+            << "isReal: "           << (matrix.isReal ? "true" : "false") << '\n'
+            << "isBinary: "         << (matrix.isBinary ? "true" : "false") << '\n'
+            << "is2d3d: "           << (matrix.is2d3d ? "true" : "false") << '\n'
+            << "isPosDef: "         << (matrix.isPosDef ? "true" : "false") << '\n'
+            << "patternSymmetry: "  << (matrix.patternSymmetry ? "true" : "false")  << '\n'
+            << "numericSymmetry: "  << (matrix.numericSymmetry ? "true" : "false")  << '\n'
+            << "kind: "             << matrix.kind             << '\n'
+            << "downloadLink: "     << matrix.downloadLink     << '\n'
+            << "installationPath: " << matrix.installationPath << '\n'
+            << "----------------------------------------" << std::endl;
+
+        Matrix currentMatrix(matrix.installationPath, MATRIX_DIRECTORY + matrix.name + ".txt", matrix.numericSymmetry, matrix.isBinary);
+        double time = run(currentMatrix);
         std::cout << "Time: " << time << std::endl;
         std::cout << "******************************" << std::endl;
     }
@@ -83,56 +105,50 @@ void Benchmark::main()
 double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
+    constexpr unsigned noMasks = 32 / sliceSize;
+    constexpr bool save = true;
+    constexpr bool load = true;
 
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
+    bool fullPadding = csc->isSocialNetwork() ? false : true;
     //
+
+    // binary names
+    std::string brsBinaryName = matrix.filename + "_brs.bin";
+    std::string orderingBinaryName = matrix.filename + "_ordering.bin";
 
     // csc ordering
     unsigned* inversePermutation = nullptr;
-    if (csc->isRoadNetwork())
+    if (std::filesystem::exists(std::filesystem::path(orderingBinaryName)) && load)
     {
-        inversePermutation = csc->rcm();
+        inversePermutation = csc->orderFromBinary(orderingBinaryName);
     }
     else
     {
-        inversePermutation = csc->gorderWithJackard(sliceSize);
-    }
-    
-    if (inversePermutation == nullptr)
-    {
-        inversePermutation = new unsigned[csc->getN()];
-        for (unsigned i = 0; i < csc->getN(); ++i)
+        inversePermutation = csc->reorder(sliceSize);
+        if (save)
         {
-            inversePermutation[i] = i;
+            csc->saveOrderingToBinary(orderingBinaryName, inversePermutation);
         }
     }
     //
 
     // brs
     std::ofstream file(matrix.filename + ".csv");
-    bool fullPadding;
-    std::string binaryName;
-    if (csc->isRoadNetwork())
+    BRS* brs = new BRS(sliceSize, noMasks, fullPadding, file);
+    if (std::filesystem::exists(std::filesystem::path(brsBinaryName)) && load)
     {
-        fullPadding = true;
-        binaryName = matrix.filename + "_fullpad_natural.bin";
+        brs->constructFromBinary(brsBinaryName);
     }
     else
-    {
-        fullPadding = false;
-        binaryName = matrix.filename + "_natural.bin";
-    }
-    BRS* brs = new BRS(sliceSize, fullPadding, file);
-    if (!std::filesystem::exists(std::filesystem::path(binaryName)))
     {
         brs->constructFromCSCMatrix(csc);
-        brs->saveToBinary(binaryName);
-    }
-    else
-    {
-        brs->constructFromBinary(binaryName);
+        if (save)
+        {
+            brs->saveToBinary(brsBinaryName);
+        }
     }
     //
 
@@ -182,12 +198,15 @@ double Benchmark::run(const Matrix& matrix)
         delete[] result.levels;
         result.levels = newLevels;
         brs->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
-        delete[] result.levels;
     }
     //
 
     // cleanup
     file.close();
+    for (auto& result: results)
+    {
+        delete[] result.levels;
+    }
     delete csc;
     delete brs;
     delete kernel;

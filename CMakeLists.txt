@@ -20,6 +20,8 @@ if(CUDAToolkit_FOUND)
     enable_language(CUDA)
 endif()
 
+find_package(CURL REQUIRED)
+
 include_directories(.)
 include_directories(Gorder)
 
@@ -33,6 +35,7 @@ add_executable(sutensor
 )
 
 target_link_libraries(sutensor
+    CURL::libcurl
     OpenMP::OpenMP_CXX
     cuda
     CUDA::cudart
