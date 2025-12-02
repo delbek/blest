@@ -342,7 +342,7 @@ void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
                     }
                     else
                     {
-                        vset.rows.emplace_back(0);
+                        vset.rows.emplace_back(UNSIGNED_MAX);
                         ++cumulativeCounter;
                     }
                 }
@@ -351,24 +351,37 @@ void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
         }
         else
         {
-            MASK cumulative = 0;
-            unsigned cumulativeCounter = 0;
-            for (unsigned slice = leftoverStart; slice < rset.rows.size(); ++slice)
+            unsigned stride = ((rset.rows.size() - leftoverStart) / m_NoMasks);
+            for (unsigned thread = 0; thread < stride; ++thread)
             {
-                vset.rows.emplace_back(rset.rows[slice]);
-                cumulative |= (rset.masks[slice] << (m_SliceSize * cumulativeCounter++));
-                if (cumulativeCounter == m_NoMasks)
+                MASK cumulative = 0;
+                unsigned cumulativeCounter = 0;
+                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
                 {
-                    vset.masks.emplace_back(cumulative);
-                    cumulative = 0;
-                    cumulativeCounter = 0;
+                    unsigned current = leftoverStart + mask * stride + thread;
+                    vset.rows.emplace_back(rset.rows[current]);
+                    cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
                 }
+                vset.masks.emplace_back(cumulative);
             }
-            if (cumulativeCounter != 0)
+            leftoverStart += stride * m_NoMasks;
+            if (leftoverStart < rset.rows.size())
             {
-                for (; cumulativeCounter < m_NoMasks; ++cumulativeCounter)
+                MASK cumulative = 0;
+                unsigned cumulativeCounter = 0;
+                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
                 {
-                    vset.rows.emplace_back(0);
+                    unsigned current = leftoverStart + mask;
+                    if (current < rset.rows.size())
+                    {
+                        vset.rows.emplace_back(rset.rows[current]);
+                        cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
+                    }
+                    else
+                    {
+                        vset.rows.emplace_back(UNSIGNED_MAX);
+                        ++cumulativeCounter;
+                    }
                 }
                 vset.masks.emplace_back(cumulative);
             }
@@ -379,44 +392,51 @@ void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
 
 double BRS::computeLocalityRatio(const std::vector<VSet>& vsets)
 {
-    MASK CONCEALER = (m_SliceSize == 32) ? static_cast<MASK>(0xFFFFFFFF) : ((static_cast<MASK>(1) << m_SliceSize) - 1);
-
-    double average = 0;
+    double localityValue = 0;
     for (const auto& vset: vsets)
     {
-        double mean = 0;
-        unsigned count = 0;
-        double standardDev = 0;
-        for (unsigned slice = 0; slice < vset.rows.size(); slice += m_NoMasks)
+        double vsetMean = 0;
+        for (unsigned mask = 0; mask < m_NoMasks; ++mask)
         {
-            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+            double mean = 0;
+            unsigned count = 0;
+            double stdev = 0;
+            for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
             {
-                MASK connectivity = ((vset.masks[slice / m_NoMasks] >> mask * m_SliceSize) & CONCEALER);
-                if (connectivity != 0)
+                unsigned slice = thread * m_NoMasks + mask;
+                if (slice < vset.rows.size() && vset.rows[slice] != UNSIGNED_MAX)
                 {
-                    mean += vset.rows[slice + mask];
+                    unsigned row = vset.rows[slice];
+                    mean += row;
                     ++count;
                 }
             }
-        }
-        mean /= count;
-        for (unsigned slice = 0; slice < vset.rows.size(); slice += m_NoMasks)
-        {
-            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+            if (count != 0)
+            {   
+                mean /= count;
+            }
+            for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
             {
-                MASK connectivity = ((vset.masks[slice / m_NoMasks] >> mask * m_SliceSize) & CONCEALER);
-                if (connectivity != 0)
+                unsigned slice = thread * m_NoMasks + mask;
+                if (slice < vset.rows.size() && vset.rows[slice] != UNSIGNED_MAX)
                 {
-                    standardDev += ((vset.rows[slice + mask] - mean) * (vset.rows[slice + mask] - mean));
+                    unsigned row = vset.rows[slice];
+                    stdev += ((row - mean) * (row - mean));
                 }
             }
+            if (count != 0)
+            {
+                stdev /= count;
+            }
+            stdev = std::sqrt(stdev);
+            vsetMean += stdev;
         }
-        standardDev /= count;
-        standardDev = std::sqrt(standardDev);
-        average += standardDev;
+        vsetMean /= m_NoMasks;
+        localityValue += vsetMean;
     }
-    average /= vsets.size();
-    return average;
+    localityValue /= vsets.size();
+
+    return localityValue;
 }
 
 void BRS::printBRSData()

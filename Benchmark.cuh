@@ -64,10 +64,7 @@ void Benchmark::main()
     /* GAP-Benchmark Suite */
     filter.names = {
         "GAP-twitter",
-        "GAP-road",
-        "GAP-web"
-        //"GAP-kron",
-        //"GAP-urand"
+        "GAP-road"
     };
 
     std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
@@ -112,8 +109,8 @@ double Benchmark::run(const Matrix& matrix)
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
-    bool fullPadding = csc->isSocialNetwork() ? false : true;
     //
+    bool fullPadding = csc->isSocialNetwork() ? false : true;
 
     // binary names
     std::string brsBinaryName = matrix.filename + "_brs.bin";
@@ -155,8 +152,8 @@ double Benchmark::run(const Matrix& matrix)
     // kernel run
     BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 5;
-    unsigned nIgnore = 2;
+    unsigned nRun = 1;
+    unsigned nIgnore = 0;
     double total = 0;
     unsigned iter = 0;
     std::vector<BFSResult> results;

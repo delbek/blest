@@ -7,7 +7,7 @@
 #SBATCH --partition=kolyoz-cuda
 #SBATCH --gres=gpu:1
 #SBATCH -C H100
-#SBATCH --time=3-00:00:00
+#SBATCH --time=0-01:00:00
 #SBATCH --output=/arf/home/delbek/sutensor/res/out-%j.out
 #SBATCH --error=/arf/home/delbek/sutensor/res/out-%j.err
 #SBATCH --export=NONE
