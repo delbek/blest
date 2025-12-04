@@ -61,11 +61,41 @@ void Benchmark::main()
     SuiteSparseDownloader downloader;
     SuiteSparseDownloader::MatrixFilter filter;
 
-    /* GAP-Benchmark Suite */
+    //"com-Friendster"
+    //"GAP-urand"
+    //"GAP-kron"
+    //"Spielman_k600"
+    //"nlpkkt240"
+
+    /* FULL EXPERIMENT SET
     filter.names = {
+        "GAP-web",
+        "GAP-road",
         "GAP-twitter",
-        "GAP-road"
+        "webbase-2001",
+        "uk-2005",
+        "europe_osm",
+        "road_usa",
+        "sk-2005",
+        "it-2004",
+        "mawi_201512020330",
+        "kmer_V1r"
     };
+    */
+
+    /* COMPRESSION EXPERIMENTS */
+    filter.names = {
+        "web-BerkStan"
+    };
+
+    /* UPDATE DIVERGENCE EXPERIMENTS
+    filter.names = {
+        "GAP-road",
+        "europe_osm",
+        "delaunay_n24",
+        "rgg_n_2_24_s0"
+    };
+    */
 
     std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
     downloader.downloadMatrices(MATRIX_DIRECTORY, matrices);
@@ -103,14 +133,13 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
-    constexpr bool save = true;
-    constexpr bool load = true;
+    constexpr bool save = false;
+    constexpr bool load = false;
 
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
     //
-    bool fullPadding = csc->isSocialNetwork() ? false : true;
 
     // binary names
     std::string brsBinaryName = matrix.filename + "_brs.bin";
@@ -134,7 +163,7 @@ double Benchmark::run(const Matrix& matrix)
 
     // brs
     std::ofstream file(matrix.filename + ".csv");
-    BRS* brs = new BRS(sliceSize, noMasks, fullPadding, file);
+    BRS* brs = new BRS(sliceSize, noMasks, csc->isSocialNetwork(), file);
     if (std::filesystem::exists(std::filesystem::path(brsBinaryName)) && load)
     {
         brs->constructFromBinary(brsBinaryName);
@@ -152,8 +181,8 @@ double Benchmark::run(const Matrix& matrix)
     // kernel run
     BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 1;
-    unsigned nIgnore = 0;
+    unsigned nRun = 5;
+    unsigned nIgnore = 2;
     double total = 0;
     unsigned iter = 0;
     std::vector<BFSResult> results;

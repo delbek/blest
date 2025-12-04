@@ -12,6 +12,8 @@
 #include <algorithm>
 using namespace cooperative_groups;
 
+#define FULL_PADDING
+#define ORDERING
 #define DIRECTION_SWITCHING_CONSTANT 1
 
 #define M 8

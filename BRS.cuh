@@ -20,7 +20,7 @@ public:
     };
 
 public:
-    BRS(unsigned sliceSize, unsigned noMasks, unsigned isFullPadding, std::ofstream& file);
+    BRS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file);
     BRS(const BRS& other) = delete;
     BRS(BRS&& other) noexcept = delete;
     BRS& operator=(const BRS& other) = delete;
@@ -41,7 +41,7 @@ public:
     [[nodiscard]] inline unsigned getNoRealSliceSets() {return m_NoRealSliceSets;}
     [[nodiscard]] inline unsigned getNoVirtualSliceSets() {return m_NoVirtualSliceSets;}
     [[nodiscard]] inline unsigned getNoSlices() {return m_NoSlices;}
-    [[nodiscard]] inline bool getIsFullPadding() {return m_IsFullPadding;}
+    [[nodiscard]] inline bool IsSocialNetwork() {return m_IsSocialNetwork;}
     [[nodiscard]] inline unsigned getNoPaddedSlices() {return m_NoPaddedSlices;}
     [[nodiscard]] inline unsigned* getSliceSetPtrs() {return m_SliceSetPtrs;}
     [[nodiscard]] inline unsigned* getVirtualToReal() {return m_VirtualToReal;}
@@ -51,7 +51,7 @@ public:
 
 private:
     void distributeSlices(const VSet& rset, std::vector<VSet>& vsets);
-    double computeLocalityRatio(const std::vector<VSet>& vsets);
+    double computeUpdateDivergence(const std::vector<VSet>& vsets);
 
 private:
     unsigned m_N;
@@ -60,7 +60,7 @@ private:
     unsigned m_NoRealSliceSets;
     unsigned m_NoVirtualSliceSets;
     unsigned m_NoSlices;
-    bool m_IsFullPadding;
+    bool m_IsSocialNetwork;
     unsigned m_NoPaddedSlices;
 
     unsigned* m_SliceSetPtrs;
@@ -73,11 +73,11 @@ private:
     std::ofstream& m_File;
 };
 
-BRS::BRS(unsigned sliceSize, unsigned noMasks, unsigned isFullPadding, std::ofstream& file)
+BRS::BRS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file)
 : BitMatrix(),
   m_SliceSize(sliceSize),
   m_NoMasks(noMasks),
-  m_IsFullPadding(isFullPadding),
+  m_IsSocialNetwork(isSocialNetwork),
   m_File(file)
 {
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)
@@ -111,7 +111,7 @@ void BRS::saveToBinary(std::string filename)
     out.write(reinterpret_cast<const char*>(&m_NoRealSliceSets), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoVirtualSliceSets), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoSlices), (sizeof(unsigned)));
-    out.write(reinterpret_cast<const char*>(&m_IsFullPadding), (sizeof(bool)));
+    out.write(reinterpret_cast<const char*>(&m_IsSocialNetwork), (sizeof(bool)));
     out.write(reinterpret_cast<const char*>(&m_NoPaddedSlices), (sizeof(unsigned)));
 
     out.write(reinterpret_cast<const char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
@@ -133,7 +133,7 @@ void BRS::constructFromBinary(std::string filename)
     in.read(reinterpret_cast<char*>(&m_NoRealSliceSets), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoVirtualSliceSets), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoSlices), sizeof(unsigned));
-    in.read(reinterpret_cast<char*>(&m_IsFullPadding), sizeof(bool));
+    in.read(reinterpret_cast<char*>(&m_IsSocialNetwork), sizeof(bool));
     in.read(reinterpret_cast<char*>(&m_NoPaddedSlices), sizeof(unsigned));
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
@@ -246,7 +246,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
     }
     rsets.clear();
-    std::cout << "Locality ratio is: " << this->computeLocalityRatio(vsets) << std::endl;
+    std::cout << "Update divergence is: " << this->computeUpdateDivergence(vsets) << std::endl;
     m_NoVirtualSliceSets = vsets.size();
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
@@ -326,73 +326,70 @@ void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
         VSet vset;
         vset.rset = rset.rset;
 
-        if (m_IsFullPadding)
+        #ifdef FULL_PADDING
+        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
         {
-            for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+            MASK cumulative = 0;
+            unsigned cumulativeCounter = 0;
+            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
             {
-                MASK cumulative = 0;
-                unsigned cumulativeCounter = 0;
-                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+                unsigned current = leftoverStart + mask * WARP_SIZE + thread;
+                if (current < rset.rows.size())
                 {
-                    unsigned current = leftoverStart + mask * WARP_SIZE + thread;
-                    if (current < rset.rows.size())
-                    {
-                        vset.rows.emplace_back(rset.rows[current]);
-                        cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
-                    }
-                    else
-                    {
-                        vset.rows.emplace_back(UNSIGNED_MAX);
-                        ++cumulativeCounter;
-                    }
-                }
-                vset.masks.emplace_back(cumulative);
-            }
-        }
-        else
-        {
-            unsigned stride = ((rset.rows.size() - leftoverStart) / m_NoMasks);
-            for (unsigned thread = 0; thread < stride; ++thread)
-            {
-                MASK cumulative = 0;
-                unsigned cumulativeCounter = 0;
-                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
-                {
-                    unsigned current = leftoverStart + mask * stride + thread;
                     vset.rows.emplace_back(rset.rows[current]);
                     cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
                 }
-                vset.masks.emplace_back(cumulative);
-            }
-            leftoverStart += stride * m_NoMasks;
-            if (leftoverStart < rset.rows.size())
-            {
-                MASK cumulative = 0;
-                unsigned cumulativeCounter = 0;
-                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+                else
                 {
-                    unsigned current = leftoverStart + mask;
-                    if (current < rset.rows.size())
-                    {
-                        vset.rows.emplace_back(rset.rows[current]);
-                        cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
-                    }
-                    else
-                    {
-                        vset.rows.emplace_back(UNSIGNED_MAX);
-                        ++cumulativeCounter;
-                    }
+                    vset.rows.emplace_back(UNSIGNED_MAX);
+                    ++cumulativeCounter;
                 }
-                vset.masks.emplace_back(cumulative);
             }
+            vset.masks.emplace_back(cumulative);
         }
+        #else
+        unsigned stride = ((rset.rows.size() - leftoverStart) / m_NoMasks);
+        for (unsigned thread = 0; thread < stride; ++thread)
+        {
+            MASK cumulative = 0;
+            unsigned cumulativeCounter = 0;
+            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+            {
+                unsigned current = leftoverStart + mask * stride + thread;
+                vset.rows.emplace_back(rset.rows[current]);
+                cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
+            }
+            vset.masks.emplace_back(cumulative);
+        }
+        leftoverStart += stride * m_NoMasks;
+        if (leftoverStart < rset.rows.size())
+        {
+            MASK cumulative = 0;
+            unsigned cumulativeCounter = 0;
+            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+            {
+                unsigned current = leftoverStart + mask;
+                if (current < rset.rows.size())
+                {
+                    vset.rows.emplace_back(rset.rows[current]);
+                    cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
+                }
+                else
+                {
+                    vset.rows.emplace_back(UNSIGNED_MAX);
+                    ++cumulativeCounter;
+                }
+            }
+            vset.masks.emplace_back(cumulative);
+        }
+        #endif
         vsets.emplace_back(vset);
     }
 }
 
-double BRS::computeLocalityRatio(const std::vector<VSet>& vsets)
+double BRS::computeUpdateDivergence(const std::vector<VSet>& vsets)
 {
-    double localityValue = 0;
+    double updateDivergence = 0;
     for (const auto& vset: vsets)
     {
         double vsetMean = 0;
@@ -432,11 +429,11 @@ double BRS::computeLocalityRatio(const std::vector<VSet>& vsets)
             vsetMean += stdev;
         }
         vsetMean /= m_NoMasks;
-        localityValue += vsetMean;
+        updateDivergence += vsetMean;
     }
-    localityValue /= vsets.size();
+    updateDivergence /= vsets.size();
 
-    return localityValue;
+    return updateDivergence;
 }
 
 void BRS::printBRSData()
@@ -508,7 +505,6 @@ void BRS::printBRSData()
         std::cout << "Chunk: " << chunk << " - Slice Count: " << (m_SliceSetPtrs[end] - m_SliceSetPtrs[start]) << " - Bits: " << (m_SliceSetPtrs[end] - m_SliceSetPtrs[start]) * m_SliceSize << std::endl;
     }
     m_NoPaddedSlices = padded;
-    std::cout << "Is Fully Padded?: " << m_IsFullPadding << std::endl;
     std::cout << "Total padded slices: " << m_NoPaddedSlices << std::endl;
     std::cout << "Padded/All: " << (static_cast<double>(m_NoPaddedSlices) / m_NoSlices) << std::endl;
     std::cout << "Bits (total): " << (m_NoSlices * m_SliceSize) << std::endl;

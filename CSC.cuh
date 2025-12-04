@@ -276,6 +276,7 @@ unsigned* CSC::reorder(unsigned sliceSize)
 {
 	double start = omp_get_wtime();
 	unsigned* inversePermutation = nullptr;
+	#ifdef ORDERING
 	if (this->isSocialNetwork())
 	{
 		inversePermutation = this->gorderWithJackard(sliceSize);
@@ -284,6 +285,9 @@ unsigned* CSC::reorder(unsigned sliceSize)
 	{
 		inversePermutation = this->rcm();
 	}
+	#else
+	inversePermutation = this->natural();
+	#endif
 	double end = omp_get_wtime();
 	std::cout << "Time took to reorder: " << end - start << std::endl;
 	return inversePermutation;
