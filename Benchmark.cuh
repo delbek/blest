@@ -61,23 +61,20 @@ void Benchmark::main()
     SuiteSparseDownloader downloader;
     SuiteSparseDownloader::MatrixFilter filter;
 
-    //"com-Friendster"
-    //"GAP-urand"
-    //"GAP-kron"
-    //"Spielman_k600"
-    //"nlpkkt240"
-
     /* FULL EXPERIMENT SET
     filter.names = {
         "GAP-web",
         "GAP-road",
         "GAP-twitter",
+        "GAP-urand",
+        "GAP-kron",
         "webbase-2001",
         "uk-2005",
         "europe_osm",
         "road_usa",
         "sk-2005",
         "it-2004",
+        "com-Friendster",
         "mawi_201512020330",
         "kmer_V1r"
     };
@@ -133,8 +130,8 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
-    constexpr bool save = false;
-    constexpr bool load = false;
+    constexpr bool save = true;
+    constexpr bool load = true;
 
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);

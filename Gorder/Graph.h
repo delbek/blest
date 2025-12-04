@@ -41,10 +41,10 @@ using namespace std;
 
 class Vertex{
 public:
-	int outstart;
-	int outdegree;
-	int instart;
-	int indegree;
+	long long int outstart;
+	long long int outdegree;
+	long long int instart;
+	long long int indegree;
 
 	Vertex(){
 		outdegree=indegree=0;
@@ -54,13 +54,13 @@ public:
 
 class Graph{
 	public:
-		int vsize;
+		long long int vsize;
 		long long edgenum;
 		string name;
 		
 		vector<Vertex> graph;
-		vector<int> outedge;
-		vector<int> inedge;
+		vector<long long int> outedge;
+		vector<long long int> inedge;
 	
 		string getFilename();
 		void setFilename(string name);
@@ -70,7 +70,7 @@ class Graph{
 		void clear();
 		void readGraph(unsigned n, unsigned nnz, unsigned* colPtrs, unsigned* rows);
 		void writeGraph(ostream&);
-		void PrintReOrderedGraph(const vector<int>& order);
+		void PrintReOrderedGraph(const vector<long long int>& order);
 		void GraphAnalysis();
 		void RemoveDuplicate(const string& fullname);
 		
@@ -79,12 +79,12 @@ class Graph{
 		static vector<string>& split(const string &s, char delim, vector<string> &elems);
 
 		void GapCount();
-		double GapCost(vector<int>& order);
+		double GapCost(vector<long long int>& order);
 		void Transform();
-		void GorderGreedy(vector<int>& order, int window);
+		void GorderGreedy(vector<long long int>& order, long long int window);
 
-		void RCMOrder(vector<int>& order);
-		unsigned long long LocalityScore(const int w);
+		void RCMOrder(vector<long long int>& order);
+		unsigned long long LocalityScore(const long long int w);
 };
 
 }

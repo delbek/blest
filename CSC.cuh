@@ -693,7 +693,7 @@ unsigned* CSC::gorderWithJackard(unsigned sliceSize)
 	g.setFilename("gorder");
 	g.readGraph(m_N, m_NNZ, m_ColPtrs, m_Rows);
 	g.Transform();
-	std::vector<int> order;
+	std::vector<long long int> order;
 	g.GorderGreedy(order, windowSize);
 
 	unsigned* inversePermutation = new unsigned[m_N];
@@ -713,7 +713,7 @@ unsigned* CSC::gorder(unsigned sliceSize)
 	g.setFilename("gorder");
 	g.readGraph(m_N, m_NNZ, m_ColPtrs, m_Rows);
 	g.Transform();
-	std::vector<int> order;
+	std::vector<long long int> order;
 	g.GorderGreedy(order, windowSize);
 
 	unsigned* inversePermutation = new unsigned[m_N];

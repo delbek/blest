@@ -17,7 +17,7 @@ unsigned long long MyRand64(){
 
 string extractFilename(const char* filename){
 	string name(filename);
-	int pos=name.find_last_of('.');
+	long long int pos=name.find_last_of('.');
 
 	return name.substr(0, pos);
 }

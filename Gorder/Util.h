@@ -26,7 +26,7 @@ void VectorPreprocessing(vector<T>& v, T u){
 	if(v.size()<2)
 		return ;
 
-	int p1, p2;
+	long long int p1, p2;
 	
 	sort(v.begin(), v.end());
 	p1=0;
@@ -47,10 +47,10 @@ void VectorPreprocessing(vector<T>& v, T u){
 }
 
 
-inline int IntersectionSize(const int* v1, const int* v2, int s1, int s2, int u){
-	int i=upper_bound(v1, v1+s1, u)-v1;
-	int j=lower_bound(v2, v2+s2, v1[i])-v2;
-	int count=0;
+inline long long int IntersectionSize(const long long int* v1, const long long int* v2, long long int s1, long long int s2, long long int u){
+	long long int i=upper_bound(v1, v1+s1, u)-v1;
+	long long int j=lower_bound(v2, v2+s2, v1[i])-v2;
+	long long int count=0;
 
 	while(i<s1&&j<s2){
 		if(v1[i]<v2[j]){
@@ -73,7 +73,7 @@ bool VectorEq(const vector<T>& v1, const vector<T>& v2){
 	if(v1.size()!=v2.size())
 		return false;
 
-	for(int i=0; i<v1.size(); i++){
+	for(long long int i=0; i<v1.size(); i++){
 		if(v1[i]!=v2[i])
 			return false;
 	}
@@ -84,7 +84,7 @@ bool VectorEq(const vector<T>& v1, const vector<T>& v2){
 
 template<class T>
 bool IsIntersect(const vector<T>& v1, const vector<T>& v2){
-    int i=0, j=0;
+    long long int i=0, j=0;
 
     while(i<v1.size()&&j<v2.size()){
         if(v1[i]==v2[j]){

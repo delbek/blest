@@ -89,7 +89,7 @@ BRS::BRS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstre
         throw std::runtime_error("Invalid noMasks provided.");
     }
 
-    m_File << "N\tNNZ\tMASK_BITS\tSliceSize\t#RSet\t#VSet\t#Slices\tnoMasks\tAvg(Slice/VSet)\tMin(Slice/VSet)\tMax(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tPadded/All\tBits" << std::endl;
+    m_File << "N\tNNZ\tUpdateDivergence\tSliceSize\t#RSet\t#VSet\t#Slices\tAvg(Slice/VSet)\tMin(Slice/VSet)\tMax(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tUnpaddedSlices\tBitsTotal\tBitsUnpadded\tCompressionRatio" << std::endl;
 }
 
 BRS::~BRS()
@@ -246,7 +246,9 @@ void BRS::constructFromCSCMatrix(CSC* csc)
         }
     }
     rsets.clear();
-    std::cout << "Update divergence is: " << this->computeUpdateDivergence(vsets) << std::endl;
+    double updateDivergence = this->computeUpdateDivergence(vsets);
+    std::cout << "Update divergence is: " << updateDivergence << std::endl;
+    fileFlush(m_File, updateDivergence);
     m_NoVirtualSliceSets = vsets.size();
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
@@ -476,42 +478,40 @@ void BRS::printBRSData()
 
     unsigned padded = 0;
     unsigned totalNumberOfEdgesCheck = 0;
-    unsigned noChunks = 10;
-    unsigned chunkSize = (m_NoVirtualSliceSets + noChunks - 1) / noChunks;
-    for (unsigned chunk = 0; chunk < noChunks; ++chunk)
+    for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
-        unsigned start = chunk * chunkSize;
-        unsigned end = std::min(m_NoVirtualSliceSets, start + chunkSize);
-
-        for (unsigned vset = start; vset < end; ++vset)
+        for (unsigned ptr = m_SliceSetPtrs[vset] / m_NoMasks; ptr < m_SliceSetPtrs[vset + 1] / m_NoMasks; ++ptr)
         {
-            for (unsigned ptr = m_SliceSetPtrs[vset] / m_NoMasks; ptr < m_SliceSetPtrs[vset + 1] / m_NoMasks; ++ptr)
+            MASK current = m_Masks[ptr];
+            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
             {
-                MASK current = m_Masks[ptr];
-                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+                unsigned shift = mask * m_SliceSize;
+                MASK pattern = ((current >> shift) & CONCEALER);
+                unsigned edges = __builtin_popcount(pattern);
+                if (edges == 0)
                 {
-                    unsigned shift = mask * m_SliceSize;
-                    MASK pattern = ((current >> shift) & CONCEALER);
-                    unsigned edges = __builtin_popcount(pattern);
-                    if (edges == 0)
-                    {
-                        ++padded;
-                    }
-                    totalNumberOfEdgesCheck += edges;
+                    ++padded;
                 }
+                totalNumberOfEdgesCheck += edges;
             }
         }
-
-        std::cout << "Chunk: " << chunk << " - Slice Count: " << (m_SliceSetPtrs[end] - m_SliceSetPtrs[start]) << " - Bits: " << (m_SliceSetPtrs[end] - m_SliceSetPtrs[start]) * m_SliceSize << std::endl;
     }
     m_NoPaddedSlices = padded;
+    
+    unsigned noUnpaddedSlices = m_NoSlices - m_NoPaddedSlices;
+    unsigned bitsTotal = m_NoSlices * m_SliceSize;
+    unsigned bitsUnpadded = noUnpaddedSlices * m_SliceSize;
+    double compressionRatio = (static_cast<double>(totalNumberOfEdgesCheck) / bitsUnpadded);
+    std::cout << "Total unpadded slices: " << noUnpaddedSlices << std::endl;
     std::cout << "Total padded slices: " << m_NoPaddedSlices << std::endl;
-    std::cout << "Padded/All: " << (static_cast<double>(m_NoPaddedSlices) / m_NoSlices) << std::endl;
-    std::cout << "Bits (total): " << (m_NoSlices * m_SliceSize) << std::endl;
+    std::cout << "Total bits used by the data structure: " << bitsTotal << std::endl;
+    std::cout << "Total bits used by the unpadded part of the data structure: " << bitsUnpadded << std::endl;
+    std::cout << "Compression ratio: " << compressionRatio<< std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
-    fileFlush(m_File, MASK_BITS); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices); fileFlush(m_File, m_NoMasks);
-    fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation); fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, (static_cast<double>(m_NoPaddedSlices) / m_NoSlices)); fileFlush(m_File, (m_NoSlices * m_SliceSize));
+    fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
+    fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
+    fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, noUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
     m_File << std::endl;
 }
 
@@ -531,21 +531,23 @@ void BRS::brsAnalysis()
                 MASK current = m_Masks[slice / m_NoMasks];
                 unsigned shift = (slice % m_NoMasks) * m_SliceSize;
                 MASK pattern = ((current >> shift) & CONCEALER);
-                ++counts[__builtin_popcount(pattern)];
-                ++patterns[pattern];
+                if (pattern != 0)
+                {
+                    ++counts[__builtin_popcount(pattern)];
+                    ++patterns[pattern];
+                }
             }
         }
     }
 
-    for (unsigned i = 0; i <= m_SliceSize; ++i)
+    for (unsigned i = 1; i <= m_SliceSize; ++i)
     {
         fileFlush(m_File, std::to_string(i) + " Bits");
     }
     m_File << std::endl;
-    for (unsigned i = 0; i <= m_SliceSize; ++i)
+    for (unsigned i = 1; i <= m_SliceSize; ++i)
     {
         fileFlush(m_File, counts[i]);
-        //std::cout << i << " Bit Count: " << counts[i] << std::endl;
     }
     m_File << std::endl;
 

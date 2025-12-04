@@ -25,21 +25,21 @@ namespace Gorder
 
 using namespace std;
 
-const int INITIALVALUE=0;
+const long long int INITIALVALUE=0;
 
 
 class ListElement{
 public:
-	int key;
-	int prev;
-	int next;
+	long long int key;
+	long long int prev;
+	long long int next;
 };
 
 
 class HeadEnd{
 public:
-	int first;
-	int second;
+	long long int first;
+	long long int second;
 
 	HeadEnd(){
 		first=second=-1;
@@ -49,32 +49,32 @@ public:
 	
 class UnitHeap{
 public:
-	int* update;
+	long long int* update;
 	ListElement* LinkedList;
 	vector<HeadEnd> Header;
-	int top;
-	int heapsize;
+	long long int top;
+	long long int heapsize;
 
-	UnitHeap(int size);
+	UnitHeap(long long int size);
 	~UnitHeap();
-	void DeleteElement(const int index);
-	int ExtractMax();
-	void DecrementKey(const int index);
+	void DeleteElement(const long long int index);
+	long long int ExtractMax();
+	void DecrementKey(const long long int index);
 	void DecreaseTop();
 	void ReConstruct();
 	
-	void IncrementKey(const int index){
-		int key=LinkedList[index].key;
-		const int head=Header[key].first;
-		const int prev=LinkedList[index].prev;
-		const int next=LinkedList[index].next;
+	void IncrementKey(const long long int index){
+		long long int key=LinkedList[index].key;
+		const long long int head=Header[key].first;
+		const long long int prev=LinkedList[index].prev;
+		const long long int next=LinkedList[index].next;
 
 		if(head!=index){
 			LinkedList[prev].next=next;
 			if(next>=0)
 				LinkedList[next].prev=prev;
 			
-			int headprev=LinkedList[head].prev;
+			long long int headprev=LinkedList[head].prev;
 			LinkedList[index].prev=headprev;
 			LinkedList[index].next=head;
 			LinkedList[head].prev=index;

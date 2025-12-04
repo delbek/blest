@@ -15,15 +15,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 namespace Gorder
 {
 
-UnitHeap::UnitHeap(int size){
+UnitHeap::UnitHeap(long long int size){
 	heapsize=size;
 	if(size>0){
 		Header.clear();
 		Header.resize( max(size>>4, INITIALVALUE+4));
 		LinkedList=new ListElement[size];
-		update=new int[size];
+		update=new long long int[size];
 	
-		for(int i=0; i<size; i++){
+		for(long long int i=0; i<size; i++){
 			LinkedList[i].prev=i-1;
 			LinkedList[i].next=i+1;
 			LinkedList[i].key=INITIALVALUE;
@@ -42,10 +42,10 @@ UnitHeap::~UnitHeap(){
 	delete[] update;
 }
 
-void UnitHeap::DeleteElement(const int index){
-	int prev=LinkedList[index].prev;
-	int next=LinkedList[index].next;
-	int key=LinkedList[index].key;
+void UnitHeap::DeleteElement(const long long int index){
+	long long int prev=LinkedList[index].prev;
+	long long int next=LinkedList[index].next;
+	long long int key=LinkedList[index].key;
 
 	if(prev>=0)
 		LinkedList[prev].next=next;
@@ -66,8 +66,8 @@ void UnitHeap::DeleteElement(const int index){
 	LinkedList[index].prev=LinkedList[index].next=-1;
 }
 
-int UnitHeap::ExtractMax(){
-	int tmptop;
+long long int UnitHeap::ExtractMax(){
+	long long int tmptop;
 	do{
 		tmptop=top;
 		if(update[top]<0)
@@ -78,26 +78,26 @@ int UnitHeap::ExtractMax(){
 	return tmptop;
 }
 
-void UnitHeap::DecrementKey(const int index){
+void UnitHeap::DecrementKey(const long long int index){
 	update[index]--;
 }
 
 void UnitHeap::DecreaseTop(){
-	const int tmptop=top;
-	const int key=LinkedList[tmptop].key;
-	const int next=LinkedList[tmptop].next;
-	int p=key;
-	const int newkey=key+update[tmptop]-(update[tmptop]/2); /**/
+	const long long int tmptop=top;
+	const long long int key=LinkedList[tmptop].key;
+	const long long int next=LinkedList[tmptop].next;
+	long long int p=key;
+	const long long int newkey=key+update[tmptop]-(update[tmptop]/2); /**/
 
 	if(newkey<LinkedList[next].key){
-		int tmp=LinkedList[Header[p].second].next;
+		long long int tmp=LinkedList[Header[p].second].next;
 		while(tmp>=0 && LinkedList[tmp].key>=newkey){
 			p=LinkedList[tmp].key;
 			tmp=LinkedList[Header[p].second].next;
 		}
 		LinkedList[next].prev=-1;
-		const int psecond=Header[p].second;
-		int tailnext=LinkedList[ psecond ].next;
+		const long long int psecond=Header[p].second;
+		long long int tailnext=LinkedList[ psecond ].next;
 		LinkedList[top].prev=psecond;
 		LinkedList[top].next=tailnext;
 		LinkedList[psecond].next=tmptop;
@@ -121,32 +121,32 @@ void UnitHeap::DecreaseTop(){
 }
 
 void UnitHeap::ReConstruct(){
-	vector<int> tmp(heapsize);
-	for(int i=0; i<heapsize; i++)
+	vector<long long int> tmp(heapsize);
+	for(long long int i=0; i<heapsize; i++)
 		tmp[i]=i;
 
-	sort(tmp.begin(), tmp.end(), [&](const int a, const int b)->bool{
+	sort(tmp.begin(), tmp.end(), [&](const long long int a, const long long int b)->bool{
 		if(LinkedList[a].key > LinkedList[b].key)
 			return true;
 		else
 			return false;
 	});
 
-	int key=LinkedList[tmp[0]].key;
+	long long int key=LinkedList[tmp[0]].key;
 	LinkedList[tmp[0]].next=tmp[1];
 	LinkedList[tmp[0]].prev=-1;
 	LinkedList[tmp[tmp.size()-1]].next=-1;
 	LinkedList[tmp[tmp.size()-1]].prev=tmp[tmp.size()-2];
-	Header=vector<HeadEnd> (max(key+1, (int)Header.size()));
+	Header=vector<HeadEnd> (max(key+1, (long long int)Header.size()));
 	Header[key].first=tmp[0];
-	for(int i=1; i<tmp.size()-1; i++){
-		int prev=tmp[i-1];
-		int v=tmp[i];
-		int next=tmp[i+1];
+	for(long long int i=1; i<tmp.size()-1; i++){
+		long long int prev=tmp[i-1];
+		long long int v=tmp[i];
+		long long int next=tmp[i+1];
 		LinkedList[v].prev=prev;
 		LinkedList[v].next=next;
 
-		int tmpkey=LinkedList[tmp[i]].key;
+		long long int tmpkey=LinkedList[tmp[i]].key;
 		if(tmpkey!=key){
 			Header[key].second=tmp[i-1];
 			Header[tmpkey].first=tmp[i];
@@ -157,8 +157,8 @@ void UnitHeap::ReConstruct(){
 		Header[key].second=tmp[tmp.size()-1];
 	else{
 		Header[key].second=tmp[tmp.size()-2];
-		int lastone=tmp[tmp.size()-1];
-		int lastkey=LinkedList[lastone].key;
+		long long int lastone=tmp[tmp.size()-1];
+		long long int lastkey=LinkedList[lastone].key;
 		Header[lastkey].first=Header[lastkey].second=lastone;
 	}
 	top=tmp[0];
