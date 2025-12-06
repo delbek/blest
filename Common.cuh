@@ -12,11 +12,11 @@
 #include <algorithm>
 using namespace cooperative_groups;
 
-#define FULL_PADDING
+static bool FULL_PADDING = true; 
 #define ORDERING
+#define SOCIAL_NETWORK_THRESHOLD 20
 #define DIRECTION_SWITCHING_CONSTANT 1
 
-#define M 8
 #define K 128
 #define MASK unsigned
 constexpr unsigned MASK_BITS = sizeof(MASK) * 8;

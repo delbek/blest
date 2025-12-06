@@ -162,6 +162,7 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	std::cout << "Average Profile: " << this->averageProfile() << std::endl;
 
 	m_IsSocial = this->socialNetworkHelper();
+	m_IsSocial |= (m_AverageDegree > SOCIAL_NETWORK_THRESHOLD);
 	std::string print = m_IsSocial ? "The graph is a social network." : "The graph is not a social network.";
 	std::cout << print << std::endl;
 }
@@ -958,7 +959,7 @@ bool CSC::permutationCheck(unsigned* inversePermutation)
 		if (check[inversePermutation[j]] == true) return false;
 		check[inversePermutation[j]] = true;
 	}
-	for (unsigned j = 0; j < m_N; ++j) // unnecessary but whatever
+	for (unsigned j = 0; j < m_N; ++j)
 	{
 		if (check[j] == false) return false;
 	}

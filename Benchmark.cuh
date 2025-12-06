@@ -61,29 +61,32 @@ void Benchmark::main()
     SuiteSparseDownloader downloader;
     SuiteSparseDownloader::MatrixFilter filter;
 
-    /* FULL EXPERIMENT SET
+    /*
+    "GAP-kron"
+    "mawi_201512020330"
+    */
+
+    /* FULL EXPERIMENT SET */
     filter.names = {
+        "webbase-2001",
         "GAP-web",
         "GAP-road",
         "GAP-twitter",
-        "GAP-urand",
-        "GAP-kron",
-        "webbase-2001",
         "uk-2005",
         "europe_osm",
         "road_usa",
         "sk-2005",
         "it-2004",
         "com-Friendster",
-        "mawi_201512020330",
+        "GAP-urand",
         "kmer_V1r"
     };
-    */
 
-    /* COMPRESSION EXPERIMENTS */
+    /* COMPRESSION EXPERIMENTS
     filter.names = {
         "web-BerkStan"
     };
+    */
 
     /* UPDATE DIVERGENCE EXPERIMENTS
     filter.names = {
@@ -130,13 +133,16 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
-    constexpr bool save = true;
-    constexpr bool load = true;
+    constexpr bool orderingSave = false;
+    constexpr bool orderingLoad = true;
+    constexpr bool brsSave = false;
+    constexpr bool brsLoad = false;
 
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
     //
+    if (csc->isSocialNetwork()) FULL_PADDING = false;
 
     // binary names
     std::string brsBinaryName = matrix.filename + "_brs.bin";
@@ -144,14 +150,14 @@ double Benchmark::run(const Matrix& matrix)
 
     // csc ordering
     unsigned* inversePermutation = nullptr;
-    if (std::filesystem::exists(std::filesystem::path(orderingBinaryName)) && load)
+    if (std::filesystem::exists(std::filesystem::path(orderingBinaryName)) && orderingLoad)
     {
         inversePermutation = csc->orderFromBinary(orderingBinaryName);
     }
     else
     {
         inversePermutation = csc->reorder(sliceSize);
-        if (save)
+        if (orderingSave)
         {
             csc->saveOrderingToBinary(orderingBinaryName, inversePermutation);
         }
@@ -161,14 +167,14 @@ double Benchmark::run(const Matrix& matrix)
     // brs
     std::ofstream file(matrix.filename + ".csv");
     BRS* brs = new BRS(sliceSize, noMasks, csc->isSocialNetwork(), file);
-    if (std::filesystem::exists(std::filesystem::path(brsBinaryName)) && load)
+    if (std::filesystem::exists(std::filesystem::path(brsBinaryName)) && brsLoad)
     {
         brs->constructFromBinary(brsBinaryName);
     }
     else
     {
         brs->constructFromCSCMatrix(csc);
-        if (save)
+        if (brsSave)
         {
             brs->saveToBinary(brsBinaryName);
         }
@@ -183,7 +189,7 @@ double Benchmark::run(const Matrix& matrix)
     double total = 0;
     unsigned iter = 0;
     std::vector<BFSResult> results;
-    for (const auto source: sources)
+    for (const auto& source: sources)
     {
         double run = 0;
         for (unsigned i = 0; i < nRun; ++i)
@@ -204,9 +210,9 @@ double Benchmark::run(const Matrix& matrix)
     //
 
     unsigned* permutation = new unsigned[csc->getN()];
-    for (unsigned i = 0; i < csc->getN(); ++i)
+    for (unsigned old = 0; old < csc->getN(); ++old)
     {
-        permutation[inversePermutation[i]] = i;
+        permutation[inversePermutation[old]] = old;
     }
 
     // result save

@@ -41,8 +41,9 @@ public:
     [[nodiscard]] inline unsigned getNoRealSliceSets() {return m_NoRealSliceSets;}
     [[nodiscard]] inline unsigned getNoVirtualSliceSets() {return m_NoVirtualSliceSets;}
     [[nodiscard]] inline unsigned getNoSlices() {return m_NoSlices;}
-    [[nodiscard]] inline bool IsSocialNetwork() {return m_IsSocialNetwork;}
+    [[nodiscard]] inline unsigned getNoUnpaddedSlices() {return m_NoUnpaddedSlices;}
     [[nodiscard]] inline unsigned getNoPaddedSlices() {return m_NoPaddedSlices;}
+    [[nodiscard]] inline bool IsSocialNetwork() {return m_IsSocialNetwork;}
     [[nodiscard]] inline unsigned* getSliceSetPtrs() {return m_SliceSetPtrs;}
     [[nodiscard]] inline unsigned* getVirtualToReal() {return m_VirtualToReal;}
     [[nodiscard]] inline unsigned* getRealPtrs() {return m_RealPtrs;}
@@ -60,8 +61,9 @@ private:
     unsigned m_NoRealSliceSets;
     unsigned m_NoVirtualSliceSets;
     unsigned m_NoSlices;
-    bool m_IsSocialNetwork;
+    unsigned m_NoUnpaddedSlices;
     unsigned m_NoPaddedSlices;
+    bool m_IsSocialNetwork;
 
     unsigned* m_SliceSetPtrs;
     unsigned* m_VirtualToReal;
@@ -111,8 +113,9 @@ void BRS::saveToBinary(std::string filename)
     out.write(reinterpret_cast<const char*>(&m_NoRealSliceSets), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoVirtualSliceSets), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoSlices), (sizeof(unsigned)));
-    out.write(reinterpret_cast<const char*>(&m_IsSocialNetwork), (sizeof(bool)));
+    out.write(reinterpret_cast<const char*>(&m_NoUnpaddedSlices), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoPaddedSlices), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_IsSocialNetwork), (sizeof(bool)));
 
     out.write(reinterpret_cast<const char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
     out.write(reinterpret_cast<const char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
@@ -133,8 +136,9 @@ void BRS::constructFromBinary(std::string filename)
     in.read(reinterpret_cast<char*>(&m_NoRealSliceSets), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoVirtualSliceSets), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoSlices), sizeof(unsigned));
-    in.read(reinterpret_cast<char*>(&m_IsSocialNetwork), sizeof(bool));
+    in.read(reinterpret_cast<char*>(&m_NoUnpaddedSlices), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoPaddedSlices), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_IsSocialNetwork), sizeof(bool));
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
     in.read(reinterpret_cast<char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
@@ -169,6 +173,7 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     m_NoRealSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
     m_NoVirtualSliceSets = 0;
 
+    double start = omp_get_wtime();
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
@@ -293,7 +298,9 @@ void BRS::constructFromCSCMatrix(CSC* csc)
             m_Masks[idx++] = vsets[vset].masks[i];
         }
     }
-
+    double end = omp_get_wtime();
+    std::cout << "BVSS construction took: " << end - start << " seconds." << std::endl;
+    
     this->printBRSData();
     this->brsAnalysis();
 }
@@ -328,63 +335,66 @@ void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
         VSet vset;
         vset.rset = rset.rset;
 
-        #ifdef FULL_PADDING
-        for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
+        if (FULL_PADDING)
         {
-            MASK cumulative = 0;
-            unsigned cumulativeCounter = 0;
-            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+            for (unsigned thread = 0; thread < WARP_SIZE; ++thread)
             {
-                unsigned current = leftoverStart + mask * WARP_SIZE + thread;
-                if (current < rset.rows.size())
+                MASK cumulative = 0;
+                unsigned cumulativeCounter = 0;
+                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
                 {
+                    unsigned current = leftoverStart + mask * WARP_SIZE + thread;
+                    if (current < rset.rows.size())
+                    {
+                        vset.rows.emplace_back(rset.rows[current]);
+                        cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
+                    }
+                    else
+                    {
+                        vset.rows.emplace_back(UNSIGNED_MAX);
+                        ++cumulativeCounter;
+                    }
+                }
+                vset.masks.emplace_back(cumulative);
+            }
+        }
+        else
+        {
+            unsigned stride = ((rset.rows.size() - leftoverStart) / m_NoMasks);
+            for (unsigned thread = 0; thread < stride; ++thread)
+            {
+                MASK cumulative = 0;
+                unsigned cumulativeCounter = 0;
+                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+                {
+                    unsigned current = leftoverStart + mask * stride + thread;
                     vset.rows.emplace_back(rset.rows[current]);
                     cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
                 }
-                else
-                {
-                    vset.rows.emplace_back(UNSIGNED_MAX);
-                    ++cumulativeCounter;
-                }
+                vset.masks.emplace_back(cumulative);
             }
-            vset.masks.emplace_back(cumulative);
-        }
-        #else
-        unsigned stride = ((rset.rows.size() - leftoverStart) / m_NoMasks);
-        for (unsigned thread = 0; thread < stride; ++thread)
-        {
-            MASK cumulative = 0;
-            unsigned cumulativeCounter = 0;
-            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
+            leftoverStart += stride * m_NoMasks;
+            if (leftoverStart < rset.rows.size())
             {
-                unsigned current = leftoverStart + mask * stride + thread;
-                vset.rows.emplace_back(rset.rows[current]);
-                cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
-            }
-            vset.masks.emplace_back(cumulative);
-        }
-        leftoverStart += stride * m_NoMasks;
-        if (leftoverStart < rset.rows.size())
-        {
-            MASK cumulative = 0;
-            unsigned cumulativeCounter = 0;
-            for (unsigned mask = 0; mask < m_NoMasks; ++mask)
-            {
-                unsigned current = leftoverStart + mask;
-                if (current < rset.rows.size())
+                MASK cumulative = 0;
+                unsigned cumulativeCounter = 0;
+                for (unsigned mask = 0; mask < m_NoMasks; ++mask)
                 {
-                    vset.rows.emplace_back(rset.rows[current]);
-                    cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
+                    unsigned current = leftoverStart + mask;
+                    if (current < rset.rows.size())
+                    {
+                        vset.rows.emplace_back(rset.rows[current]);
+                        cumulative |= (rset.masks[current] << (m_SliceSize * cumulativeCounter++));
+                    }
+                    else
+                    {
+                        vset.rows.emplace_back(UNSIGNED_MAX);
+                        ++cumulativeCounter;
+                    }
                 }
-                else
-                {
-                    vset.rows.emplace_back(UNSIGNED_MAX);
-                    ++cumulativeCounter;
-                }
+                vset.masks.emplace_back(cumulative);
             }
-            vset.masks.emplace_back(cumulative);
         }
-        #endif
         vsets.emplace_back(vset);
     }
 }
@@ -476,7 +486,7 @@ void BRS::printBRSData()
 
     MASK CONCEALER = (m_SliceSize == 32) ? static_cast<MASK>(0xFFFFFFFF) : ((static_cast<MASK>(1) << m_SliceSize) - 1);
 
-    unsigned padded = 0;
+    m_NoPaddedSlices = 0;
     unsigned totalNumberOfEdgesCheck = 0;
     for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
@@ -490,28 +500,27 @@ void BRS::printBRSData()
                 unsigned edges = __builtin_popcount(pattern);
                 if (edges == 0)
                 {
-                    ++padded;
+                    ++m_NoPaddedSlices;
                 }
                 totalNumberOfEdgesCheck += edges;
             }
         }
     }
-    m_NoPaddedSlices = padded;
     
-    unsigned noUnpaddedSlices = m_NoSlices - m_NoPaddedSlices;
+    m_NoUnpaddedSlices = m_NoSlices - m_NoPaddedSlices;
     unsigned bitsTotal = m_NoSlices * m_SliceSize;
-    unsigned bitsUnpadded = noUnpaddedSlices * m_SliceSize;
-    double compressionRatio = (static_cast<double>(totalNumberOfEdgesCheck) / bitsUnpadded);
-    std::cout << "Total unpadded slices: " << noUnpaddedSlices << std::endl;
+    unsigned bitsUnpadded = m_NoUnpaddedSlices * m_SliceSize;
+    double compressionRatio = ((static_cast<double>(totalNumberOfEdgesCheck) / m_NoUnpaddedSlices) / m_SliceSize);
+    std::cout << "Total unpadded slices: " << m_NoUnpaddedSlices << std::endl;
     std::cout << "Total padded slices: " << m_NoPaddedSlices << std::endl;
-    std::cout << "Total bits used by the data structure: " << bitsTotal << std::endl;
-    std::cout << "Total bits used by the unpadded part of the data structure: " << bitsUnpadded << std::endl;
+    std::cout << "Total connectivity bits used by the data structure: " << bitsTotal << std::endl;
+    std::cout << "Total connectivity bits used by the unpadded part of the data structure: " << bitsUnpadded << std::endl;
     std::cout << "Compression ratio: " << compressionRatio<< std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
     fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
     fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
-    fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, noUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
+    fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, m_NoUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
     m_File << std::endl;
 }
 
