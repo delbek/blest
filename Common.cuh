@@ -12,7 +12,7 @@
 #include <algorithm>
 using namespace cooperative_groups;
 
-static bool FULL_PADDING = true; 
+static bool FULL_PADDING; 
 #define ORDERING
 #define SOCIAL_NETWORK_THRESHOLD 20
 #define DIRECTION_SWITCHING_CONSTANT 1

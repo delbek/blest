@@ -62,8 +62,7 @@ void Benchmark::main()
     SuiteSparseDownloader::MatrixFilter filter;
 
     /*
-    "GAP-kron"
-    "mawi_201512020330"
+    "com-Friendster"
     */
 
     /* FULL EXPERIMENT SET */
@@ -77,8 +76,9 @@ void Benchmark::main()
         "road_usa",
         "sk-2005",
         "it-2004",
-        "com-Friendster",
+        "GAP-kron",
         "GAP-urand",
+        "mawi_201512020330",
         "kmer_V1r"
     };
 
@@ -134,7 +134,7 @@ double Benchmark::run(const Matrix& matrix)
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
     constexpr bool orderingSave = false;
-    constexpr bool orderingLoad = true;
+    constexpr bool orderingLoad = false;
     constexpr bool brsSave = false;
     constexpr bool brsLoad = false;
 
@@ -142,7 +142,14 @@ double Benchmark::run(const Matrix& matrix)
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
     std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
     //
-    if (csc->isSocialNetwork()) FULL_PADDING = false;
+    if (csc->isSocialNetwork()) 
+    {
+        FULL_PADDING = false;
+    }
+    else
+    {
+        FULL_PADDING = true;
+    }
 
     // binary names
     std::string brsBinaryName = matrix.filename + "_brs.bin";
@@ -231,16 +238,17 @@ double Benchmark::run(const Matrix& matrix)
     //
 
     // cleanup
-    file.close();
     for (auto& result: results)
     {
         delete[] result.levels;
     }
-    delete csc;
-    delete brs;
-    delete kernel;
-    delete[] inversePermutation;
     delete[] permutation;
+    delete kernel;
+    
+    delete brs;
+    file.close();
+    delete[] inversePermutation;
+    delete csc;
     //
 
     return total * 1000;
