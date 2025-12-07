@@ -35,20 +35,20 @@ public:
     void brsAnalysis();
     void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time);
 
-    [[nodiscard]] inline unsigned getN() {return m_N;}
-    [[nodiscard]] inline unsigned getSliceSize() {return m_SliceSize;}
-    [[nodiscard]] inline unsigned getNoMasks() {return m_NoMasks;}
-    [[nodiscard]] inline unsigned getNoRealSliceSets() {return m_NoRealSliceSets;}
-    [[nodiscard]] inline unsigned getNoVirtualSliceSets() {return m_NoVirtualSliceSets;}
-    [[nodiscard]] inline unsigned getNoSlices() {return m_NoSlices;}
-    [[nodiscard]] inline unsigned getNoUnpaddedSlices() {return m_NoUnpaddedSlices;}
-    [[nodiscard]] inline unsigned getNoPaddedSlices() {return m_NoPaddedSlices;}
-    [[nodiscard]] inline bool IsSocialNetwork() {return m_IsSocialNetwork;}
-    [[nodiscard]] inline unsigned* getSliceSetPtrs() {return m_SliceSetPtrs;}
-    [[nodiscard]] inline unsigned* getVirtualToReal() {return m_VirtualToReal;}
-    [[nodiscard]] inline unsigned* getRealPtrs() {return m_RealPtrs;}
-    [[nodiscard]] inline unsigned* getRowIds() {return m_RowIds;}
-    [[nodiscard]] inline MASK* getMasks() {return m_Masks;}
+    [[nodiscard]] inline unsigned& getN() {return m_N;}
+    [[nodiscard]] inline unsigned& getSliceSize() {return m_SliceSize;}
+    [[nodiscard]] inline unsigned& getNoMasks() {return m_NoMasks;}
+    [[nodiscard]] inline unsigned& getNoRealSliceSets() {return m_NoRealSliceSets;}
+    [[nodiscard]] inline unsigned& getNoVirtualSliceSets() {return m_NoVirtualSliceSets;}
+    [[nodiscard]] inline unsigned& getNoSlices() {return m_NoSlices;}
+    [[nodiscard]] inline unsigned& getNoUnpaddedSlices() {return m_NoUnpaddedSlices;}
+    [[nodiscard]] inline unsigned& getNoPaddedSlices() {return m_NoPaddedSlices;}
+    [[nodiscard]] inline bool& IsSocialNetwork() {return m_IsSocialNetwork;}
+    [[nodiscard]] inline unsigned*& getSliceSetPtrs() {return m_SliceSetPtrs;}
+    [[nodiscard]] inline unsigned*& getVirtualToReal() {return m_VirtualToReal;}
+    [[nodiscard]] inline unsigned*& getRealPtrs() {return m_RealPtrs;}
+    [[nodiscard]] inline unsigned*& getRowIds() {return m_RowIds;}
+    [[nodiscard]] inline MASK*& getMasks() {return m_Masks;}
 
 private:
     void distributeSlices(const VSet& rset, std::vector<VSet>& vsets);

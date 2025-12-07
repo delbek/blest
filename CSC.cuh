@@ -31,7 +31,7 @@ public:
 	[[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
 	[[nodiscard]] inline unsigned*& getRows() {return m_Rows;}
 	[[nodiscard]] inline double& averageDegree() {return m_AverageDegree;}
-	[[nodiscard]] inline bool isSocialNetwork() {return m_IsSocial;}
+	[[nodiscard]] inline bool& isSocialNetwork() {return m_IsSocial;}
 
 	// metrics
 	unsigned maxBandwidth();
@@ -53,14 +53,13 @@ private:
 	unsigned* random();
 	unsigned* jackard(unsigned sliceSize);
 	unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
-
 	unsigned* rcmWithJackard(unsigned sliceSize);
 	unsigned* gorderWithJackard(unsigned sliceSize);
 	unsigned* gorder(unsigned sliceSize);
-
 	unsigned* degreeSort(bool ascending = true);
 	unsigned findPseudoPeripheralNode(CSC* csc, unsigned startNode);
 	unsigned* rcm();
+	
 	void applyPermutation(unsigned* inversePermutation);
 	bool permutationCheck(unsigned* inversePermutation);
 
@@ -162,7 +161,6 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	std::cout << "Average Profile: " << this->averageProfile() << std::endl;
 
 	m_IsSocial = this->socialNetworkHelper();
-	m_IsSocial |= (m_AverageDegree > SOCIAL_NETWORK_THRESHOLD);
 	std::string print = m_IsSocial ? "The graph is a social network." : "The graph is not a social network.";
 	std::cout << print << std::endl;
 }
@@ -280,10 +278,12 @@ unsigned* CSC::reorder(unsigned sliceSize)
 	#ifdef ORDERING
 	if (this->isSocialNetwork())
 	{
+		std::cout << "Reordering with JaccardWithWindows" << std::endl;
 		inversePermutation = this->gorderWithJackard(sliceSize);
 	}
 	else
 	{
+		std::cout << "Reordering with RCM" << std::endl;
 		inversePermutation = this->rcm();
 	}
 	#else

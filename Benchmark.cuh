@@ -62,24 +62,24 @@ void Benchmark::main()
     SuiteSparseDownloader::MatrixFilter filter;
 
     /*
-    "com-Friendster"
+    "mawi_201512020330"
+    "GAP-kron"
     */
 
     /* FULL EXPERIMENT SET */
     filter.names = {
-        "webbase-2001",
+        "GAP-urand",
         "GAP-web",
         "GAP-road",
         "GAP-twitter",
+        "webbase-2001",
         "uk-2005",
         "europe_osm",
         "road_usa",
         "sk-2005",
         "it-2004",
-        "GAP-kron",
-        "GAP-urand",
-        "mawi_201512020330",
-        "kmer_V1r"
+        "kmer_V1r",
+        "com-Friendster"
     };
 
     /* COMPRESSION EXPERIMENTS
@@ -150,6 +150,8 @@ double Benchmark::run(const Matrix& matrix)
     {
         FULL_PADDING = true;
     }
+    std::cout << "Full Padding: " << FULL_PADDING << std::endl;
+    std::cout << "Lazy update kernel: " << csc->isSocialNetwork() << std::endl;
 
     // binary names
     std::string brsBinaryName = matrix.filename + "_brs.bin";
