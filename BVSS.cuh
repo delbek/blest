@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <map>
 
-class BRS: public BitMatrix
+class BVSS: public BitMatrix
 {
 public:
     struct VSet
@@ -20,19 +20,19 @@ public:
     };
 
 public:
-    BRS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file);
-    BRS(const BRS& other) = delete;
-    BRS(BRS&& other) noexcept = delete;
-    BRS& operator=(const BRS& other) = delete;
-    BRS& operator=(BRS&& other) noexcept = delete;
-    virtual ~BRS();
+    BVSS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file);
+    BVSS(const BVSS& other) = delete;
+    BVSS(BVSS&& other) noexcept = delete;
+    BVSS& operator=(const BVSS& other) = delete;
+    BVSS& operator=(BVSS&& other) noexcept = delete;
+    virtual ~BVSS();
 
     void constructFromBinary(std::string filename);
     void saveToBinary(std::string filename);
 
     void constructFromCSCMatrix(CSC* csc);
-    void printBRSData();
-    void brsAnalysis();
+    void printBVSSData();
+    void bvssAnalysis();
     void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time);
 
     [[nodiscard]] inline unsigned& getN() {return m_N;}
@@ -75,7 +75,7 @@ private:
     std::ofstream& m_File;
 };
 
-BRS::BRS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file)
+BVSS::BVSS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file)
 : BitMatrix(),
   m_SliceSize(sliceSize),
   m_NoMasks(noMasks),
@@ -94,7 +94,7 @@ BRS::BRS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstre
     m_File << "N\tNNZ\tUpdateDivergence\tSliceSize\t#RSet\t#VSet\t#Slices\tAvg(Slice/VSet)\tMin(Slice/VSet)\tMax(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tUnpaddedSlices\tBitsTotal\tBitsUnpadded\tCompressionRatio" << std::endl;
 }
 
-BRS::~BRS()
+BVSS::~BVSS()
 {
     delete[] m_SliceSetPtrs;
     delete[] m_VirtualToReal;
@@ -103,7 +103,7 @@ BRS::~BRS()
     delete[] m_Masks;
 }
 
-void BRS::saveToBinary(std::string filename)
+void BVSS::saveToBinary(std::string filename)
 {
     std::ofstream out(filename, std::ios::binary);
 
@@ -126,7 +126,7 @@ void BRS::saveToBinary(std::string filename)
     out.close();
 }
 
-void BRS::constructFromBinary(std::string filename)
+void BVSS::constructFromBinary(std::string filename)
 {
     std::ifstream in(filename, std::ios::binary);
 
@@ -157,13 +157,13 @@ void BRS::constructFromBinary(std::string filename)
 
     in.close();
 
-    std::cout << "BRS read from binary." << std::endl;
+    std::cout << "BVSS read from binary." << std::endl;
 
-    this->printBRSData();
-    this->brsAnalysis();
+    this->printBVSSData();
+    this->bvssAnalysis();
 }
 
-void BRS::constructFromCSCMatrix(CSC* csc)
+void BVSS::constructFromCSCMatrix(CSC* csc)
 {
     m_N = csc->getN();
     unsigned* colPtrs = csc->getColPtrs();
@@ -301,11 +301,11 @@ void BRS::constructFromCSCMatrix(CSC* csc)
     double end = omp_get_wtime();
     std::cout << "BVSS construction took: " << end - start << " seconds." << std::endl;
     
-    this->printBRSData();
-    this->brsAnalysis();
+    this->printBVSSData();
+    this->bvssAnalysis();
 }
 
-void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
+void BVSS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
 {
     unsigned fullWork = WARP_SIZE * m_NoMasks;
 
@@ -399,7 +399,7 @@ void BRS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
     }
 }
 
-double BRS::computeUpdateDivergence(const std::vector<VSet>& vsets)
+double BVSS::computeUpdateDivergence(const std::vector<VSet>& vsets)
 {
     double updateDivergence = 0;
     for (const auto& vset: vsets)
@@ -448,7 +448,7 @@ double BRS::computeUpdateDivergence(const std::vector<VSet>& vsets)
     return updateDivergence;
 }
 
-void BRS::printBRSData()
+void BVSS::printBVSSData()
 {
     std::cout << "MASK size: " << MASK_BITS << std::endl;
     std::cout << "Slice size: " << m_SliceSize << std::endl;
@@ -524,7 +524,7 @@ void BRS::printBRSData()
     m_File << std::endl;
 }
 
-void BRS::brsAnalysis()
+void BVSS::bvssAnalysis()
 {
     MASK CONCEALER = (m_SliceSize == 32) ? static_cast<MASK>(0xFFFFFFFF) : ((static_cast<MASK>(1) << m_SliceSize) - 1);
 
@@ -563,7 +563,7 @@ void BRS::brsAnalysis()
     m_File << "Source\tTotalLevels\tTotalVisited\tTime(ms)" << std::endl;
 }
 
-void BRS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time)
+void BVSS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time)
 {
     fileFlush(m_File, source); fileFlush(m_File, totalLevels); fileFlush(m_File, totalVisited); fileFlush(m_File, time * 1000);
     m_File << std::endl;

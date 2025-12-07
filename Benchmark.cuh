@@ -1,8 +1,8 @@
 #pragma once
 
 #include "CSC.cuh"
-#include "BRS.cuh"
-#include "BRSBFSKernel.cuh"
+#include "BVSS.cuh"
+#include "BVSSBFSKernel.cuh"
 #include <filesystem>
 #include "SuiteSparseMatrixDownloader.hpp"
 
@@ -135,8 +135,8 @@ double Benchmark::run(const Matrix& matrix)
     constexpr unsigned noMasks = 32 / sliceSize;
     constexpr bool orderingSave = false;
     constexpr bool orderingLoad = false;
-    constexpr bool brsSave = false;
-    constexpr bool brsLoad = false;
+    constexpr bool bvssSave = false;
+    constexpr bool bvssLoad = false;
 
     // csc
     CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
@@ -154,7 +154,7 @@ double Benchmark::run(const Matrix& matrix)
     std::cout << "Lazy update kernel: " << csc->isSocialNetwork() << std::endl;
 
     // binary names
-    std::string brsBinaryName = matrix.filename + "_brs.bin";
+    std::string bvssBinaryName = matrix.filename + "_bvss.bin";
     std::string orderingBinaryName = matrix.filename + "_ordering.bin";
 
     // csc ordering
@@ -173,25 +173,25 @@ double Benchmark::run(const Matrix& matrix)
     }
     //
 
-    // brs
+    // bvss
     std::ofstream file(matrix.filename + ".csv");
-    BRS* brs = new BRS(sliceSize, noMasks, csc->isSocialNetwork(), file);
-    if (std::filesystem::exists(std::filesystem::path(brsBinaryName)) && brsLoad)
+    BVSS* bvss = new BVSS(sliceSize, noMasks, csc->isSocialNetwork(), file);
+    if (std::filesystem::exists(std::filesystem::path(bvssBinaryName)) && bvssLoad)
     {
-        brs->constructFromBinary(brsBinaryName);
+        bvss->constructFromBinary(bvssBinaryName);
     }
     else
     {
-        brs->constructFromCSCMatrix(csc);
-        if (brsSave)
+        bvss->constructFromCSCMatrix(csc);
+        if (bvssSave)
         {
-            brs->saveToBinary(brsBinaryName);
+            bvss->saveToBinary(bvssBinaryName);
         }
     }
     //
 
     // kernel run
-    BRSBFSKernel* kernel = new BRSBFSKernel(dynamic_cast<BitMatrix*>(brs));
+    BVSSBFSKernel* kernel = new BVSSBFSKernel(dynamic_cast<BitMatrix*>(bvss));
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
     unsigned nRun = 5;
     unsigned nIgnore = 2;
@@ -235,7 +235,7 @@ double Benchmark::run(const Matrix& matrix)
         }
         delete[] result.levels;
         result.levels = newLevels;
-        brs->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
+        bvss->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
     }
     //
 
@@ -247,7 +247,7 @@ double Benchmark::run(const Matrix& matrix)
     delete[] permutation;
     delete kernel;
     
-    delete brs;
+    delete bvss;
     file.close();
     delete[] inversePermutation;
     delete csc;

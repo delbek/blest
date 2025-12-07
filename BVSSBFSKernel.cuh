@@ -1,10 +1,10 @@
 #pragma once
 
 #include "BFSKernel.cuh"
-#include "BRS.cuh"
+#include "BVSS.cuh"
 #include <array>
 
-namespace BRSBFSKernels
+namespace BVSSBFSKernels
 {
     template<typename T>
     __device__ __forceinline__ void swap(T* __restrict__& ptr1, T* __restrict__& ptr2)
@@ -14,7 +14,7 @@ namespace BRSBFSKernels
         ptr1 = temp;
     }
 
-    __global__ void BRSBFS8EnhancedSliceSize8NoMasks4SocialFullPad(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4SocialFullPad(
                                                                     const unsigned* const __restrict__ sliceSetPtrs,
                                                                     const unsigned* const __restrict__ virtualToReal,
                                                                     const unsigned* const __restrict__ realPtrs,
@@ -176,7 +176,7 @@ namespace BRSBFSKernels
         }
     }
 
-    __global__ void BRSBFS8EnhancedSliceSize8NoMasks4Social(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Social(
                                                             const unsigned* const __restrict__ sliceSetPtrs,
                                                             const unsigned* const __restrict__ virtualToReal,
                                                             const unsigned* const __restrict__ realPtrs,
@@ -346,7 +346,7 @@ namespace BRSBFSKernels
         }
     }
 
-    __global__ void BRSBFS8EnhancedSliceSize8NoMasks4RoadFullPad(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4RoadFullPad(
                                                                 const unsigned* const __restrict__ sliceSetPtrs,
                                                                 const unsigned* const __restrict__ virtualToReal,
                                                                 const unsigned* const __restrict__ realPtrs,
@@ -542,7 +542,7 @@ namespace BRSBFSKernels
         }
     }
 
-    __global__ void BRSBFS8EnhancedSliceSize8NoMasks4Road(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Road(
                                                             const unsigned* const __restrict__ sliceSetPtrs,
                                                             const unsigned* const __restrict__ virtualToReal,
                                                             const unsigned* const __restrict__ realPtrs,
@@ -747,40 +747,40 @@ namespace BRSBFSKernels
     }
 };
 
-class BRSBFSKernel: public BFSKernel
+class BVSSBFSKernel: public BFSKernel
 {
 public:
-    BRSBFSKernel(BitMatrix* matrix);
-    BRSBFSKernel(const BRSBFSKernel& other) = delete;
-    BRSBFSKernel(BRSBFSKernel&& other) noexcept = delete;
-    BRSBFSKernel& operator=(const BRSBFSKernel& other) = delete;
-    BRSBFSKernel& operator=(BRSBFSKernel&& other) noexcept = delete;
-    virtual ~BRSBFSKernel() = default;
+    BVSSBFSKernel(BitMatrix* matrix);
+    BVSSBFSKernel(const BVSSBFSKernel& other) = delete;
+    BVSSBFSKernel(BVSSBFSKernel&& other) noexcept = delete;
+    BVSSBFSKernel& operator=(const BVSSBFSKernel& other) = delete;
+    BVSSBFSKernel& operator=(BVSSBFSKernel&& other) noexcept = delete;
+    virtual ~BVSSBFSKernel() = default;
 
     virtual BFSResult hostCode(unsigned sourceVertex) final;
 };
 
-BRSBFSKernel::BRSBFSKernel(BitMatrix* matrix)
+BVSSBFSKernel::BVSSBFSKernel(BitMatrix* matrix)
 : BFSKernel(matrix)
 {
 
 }
 
-BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
+BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
 {
-    BRS* brs = dynamic_cast<BRS*>(matrix);
-    unsigned n = brs->getN();
-    unsigned sliceSize = brs->getSliceSize();
-    unsigned noMasks = brs->getNoMasks();
-    unsigned noRealSliceSets = brs->getNoRealSliceSets();
-    unsigned noSlices = brs->getNoSlices();
-    bool isSocialNetwork = brs->IsSocialNetwork();
-    unsigned noSliceSets = brs->getNoVirtualSliceSets();
-    unsigned* sliceSetPtrs = brs->getSliceSetPtrs();
-    unsigned* virtualToReal = brs->getVirtualToReal();
-    unsigned* realPtrs = brs->getRealPtrs();
-    unsigned* rowIds = brs->getRowIds();
-    MASK* masks = brs->getMasks();
+    BVSS* bvss = dynamic_cast<BVSS*>(matrix);
+    unsigned n = bvss->getN();
+    unsigned sliceSize = bvss->getSliceSize();
+    unsigned noMasks = bvss->getNoMasks();
+    unsigned noRealSliceSets = bvss->getNoRealSliceSets();
+    unsigned noSlices = bvss->getNoSlices();
+    bool isSocialNetwork = bvss->IsSocialNetwork();
+    unsigned noSliceSets = bvss->getNoVirtualSliceSets();
+    unsigned* sliceSetPtrs = bvss->getSliceSetPtrs();
+    unsigned* virtualToReal = bvss->getVirtualToReal();
+    unsigned* realPtrs = bvss->getRealPtrs();
+    unsigned* rowIds = bvss->getRowIds();
+    MASK* masks = bvss->getMasks();
     const unsigned DIRECTION_THRESHOLD = noSliceSets * DIRECTION_SWITCHING_CONSTANT; // vset- or rset- based?
 
     BFSResult result;
@@ -801,22 +801,22 @@ BFSResult BRSBFSKernel::hostCode(unsigned sourceVertex)
         {
             if (FULL_PADDING)
             {
-                kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedSliceSize8NoMasks4SocialFullPad;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4SocialFullPad;
             }
             else
             {
-                kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedSliceSize8NoMasks4Social;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Social;
             }
         }
         else
         {
             if (FULL_PADDING)
             {
-                kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedSliceSize8NoMasks4RoadFullPad;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4RoadFullPad;
             }
             else
             {
-                kernelPtr = (void*)BRSBFSKernels::BRSBFS8EnhancedSliceSize8NoMasks4Road;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Road;
             }
         }
     }

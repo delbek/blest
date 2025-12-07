@@ -838,7 +838,7 @@ unsigned* CSC::rcm()
 	std::fill(visited, visited + m_N, 0);
 
 	unsigned* q = new unsigned[m_N];
-	unsigned* nbrs = new unsigned[m_N];
+	unsigned* nbvss = new unsigned[m_N];
 
 	auto compAsc = [&](unsigned v1, unsigned v2)
 	{
@@ -870,16 +870,16 @@ unsigned* CSC::rcm()
 				unsigned v = inds[ptr];
 				if (visited[v] == 0)
 				{
-					nbrs[noNeigh++] = v;
+					nbvss[noNeigh++] = v;
 				  	visited[v] = 1;
 				}
 			}
 
-			std::sort(nbrs, nbrs + noNeigh, compAsc);
+			std::sort(nbvss, nbvss + noNeigh, compAsc);
 			
 			for (unsigned nbr = 0; nbr < noNeigh; ++nbr)
 			{
-			  	unsigned v = nbrs[nbr];
+			  	unsigned v = nbvss[nbr];
 			  	q[qe++] = v;
 			}
 		}
@@ -888,7 +888,7 @@ unsigned* CSC::rcm()
 	delete[] degrees;
 	delete[] visited;
 	delete[] q;
-	delete[] nbrs;
+	delete[] nbvss;
 
 	if (csc != this)
 	{
