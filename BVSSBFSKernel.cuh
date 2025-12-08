@@ -774,7 +774,7 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned noMasks = bvss->getNoMasks();
     unsigned noRealSliceSets = bvss->getNoRealSliceSets();
     unsigned noSlices = bvss->getNoSlices();
-    bool isSocialNetwork = bvss->IsSocialNetwork();
+    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
     unsigned noSliceSets = bvss->getNoVirtualSliceSets();
     unsigned* sliceSetPtrs = bvss->getSliceSetPtrs();
     unsigned* virtualToReal = bvss->getVirtualToReal();
@@ -797,7 +797,7 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     void* kernelPtr;
     if (sliceSize == 8)
     {
-        if (isSocialNetwork)
+        if (lazyKernel)
         {
             if (FULL_PADDING)
             {
@@ -913,7 +913,7 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
     double start;
-    if (!isSocialNetwork)
+    if (!lazyKernel)
     {
         std::array<void*, 13> argsA =
         {

@@ -20,7 +20,7 @@ public:
     };
 
 public:
-    BVSS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file);
+    BVSS(unsigned sliceSize, unsigned noMasks, std::ofstream& file);
     BVSS(const BVSS& other) = delete;
     BVSS(BVSS&& other) noexcept = delete;
     BVSS& operator=(const BVSS& other) = delete;
@@ -43,7 +43,7 @@ public:
     [[nodiscard]] inline unsigned& getNoSlices() {return m_NoSlices;}
     [[nodiscard]] inline unsigned& getNoUnpaddedSlices() {return m_NoUnpaddedSlices;}
     [[nodiscard]] inline unsigned& getNoPaddedSlices() {return m_NoPaddedSlices;}
-    [[nodiscard]] inline bool& IsSocialNetwork() {return m_IsSocialNetwork;}
+    [[nodiscard]] inline double& getUpdateDivergence() {return m_UpdateDivergence;}
     [[nodiscard]] inline unsigned*& getSliceSetPtrs() {return m_SliceSetPtrs;}
     [[nodiscard]] inline unsigned*& getVirtualToReal() {return m_VirtualToReal;}
     [[nodiscard]] inline unsigned*& getRealPtrs() {return m_RealPtrs;}
@@ -63,7 +63,7 @@ private:
     unsigned m_NoSlices;
     unsigned m_NoUnpaddedSlices;
     unsigned m_NoPaddedSlices;
-    bool m_IsSocialNetwork;
+    double m_UpdateDivergence;
 
     unsigned* m_SliceSetPtrs;
     unsigned* m_VirtualToReal;
@@ -75,11 +75,10 @@ private:
     std::ofstream& m_File;
 };
 
-BVSS::BVSS(unsigned sliceSize, unsigned noMasks, bool isSocialNetwork, std::ofstream& file)
+BVSS::BVSS(unsigned sliceSize, unsigned noMasks, std::ofstream& file)
 : BitMatrix(),
   m_SliceSize(sliceSize),
   m_NoMasks(noMasks),
-  m_IsSocialNetwork(isSocialNetwork),
   m_File(file)
 {
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)
@@ -115,7 +114,7 @@ void BVSS::saveToBinary(std::string filename)
     out.write(reinterpret_cast<const char*>(&m_NoSlices), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoUnpaddedSlices), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoPaddedSlices), (sizeof(unsigned)));
-    out.write(reinterpret_cast<const char*>(&m_IsSocialNetwork), (sizeof(bool)));
+    out.write(reinterpret_cast<const char*>(&m_UpdateDivergence), (sizeof(double)));
 
     out.write(reinterpret_cast<const char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
     out.write(reinterpret_cast<const char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
@@ -138,7 +137,7 @@ void BVSS::constructFromBinary(std::string filename)
     in.read(reinterpret_cast<char*>(&m_NoSlices), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoUnpaddedSlices), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoPaddedSlices), sizeof(unsigned));
-    in.read(reinterpret_cast<char*>(&m_IsSocialNetwork), sizeof(bool));
+    in.read(reinterpret_cast<char*>(&m_UpdateDivergence), sizeof(double));
 
     m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
     in.read(reinterpret_cast<char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
@@ -168,7 +167,6 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
     m_N = csc->getN();
     unsigned* colPtrs = csc->getColPtrs();
     unsigned* rows = csc->getRows();
-    fileFlush(m_File, m_N); fileFlush(m_File, colPtrs[m_N]);
 
     m_NoRealSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
     m_NoVirtualSliceSets = 0;
@@ -251,9 +249,7 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
         }
     }
     rsets.clear();
-    double updateDivergence = this->computeUpdateDivergence(vsets);
-    std::cout << "Update divergence is: " << updateDivergence << std::endl;
-    fileFlush(m_File, updateDivergence);
+    m_UpdateDivergence = this->computeUpdateDivergence(vsets);
     m_NoVirtualSliceSets = vsets.size();
 
     m_RealPtrs = new unsigned[m_NoRealSliceSets + 1];
@@ -506,7 +502,8 @@ void BVSS::printBVSSData()
             }
         }
     }
-    
+    std::cout << "Update divergence is: " << m_UpdateDivergence << std::endl;
+
     m_NoUnpaddedSlices = m_NoSlices - m_NoPaddedSlices;
     unsigned bitsTotal = m_NoSlices * m_SliceSize;
     unsigned bitsUnpadded = m_NoUnpaddedSlices * m_SliceSize;
@@ -518,7 +515,7 @@ void BVSS::printBVSSData()
     std::cout << "Compression ratio: " << compressionRatio<< std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
-    fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
+    fileFlush(m_File, m_N); fileFlush(m_File, totalNumberOfEdgesCheck); fileFlush(m_File, m_UpdateDivergence); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
     fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
     fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, m_NoUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
     m_File << std::endl;

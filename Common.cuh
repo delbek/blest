@@ -15,8 +15,7 @@ using namespace cooperative_groups;
 
 static bool FULL_PADDING; 
 #define ORDERING
-#define SOCIAL_NETWORK_THRESHOLD 20
-#define ROAD_NETWORK_THRESHOLD 5
+#define LAZY_KERNEL_THRESHOLD 25000
 #define DIRECTION_SWITCHING_CONSTANT 1
 
 #define K 128

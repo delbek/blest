@@ -5,6 +5,8 @@
 #include "BVSSBFSKernel.cuh"
 #include <filesystem>
 #include "SuiteSparseMatrixDownloader.hpp"
+#include <unordered_set>
+#include <random>
 
 #define MATRIX_DIRECTORY "/arf/scratch/delbek/"
 
@@ -34,6 +36,7 @@ public:
     void main();
     double run(const Matrix& matrix);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
+    void generateSourceVertices(std::string filename, unsigned n, unsigned k);
 };
 
 std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
@@ -56,30 +59,45 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     return sources;
 }
 
+void Benchmark::generateSourceVertices(std::string filename, unsigned n, unsigned k)
+{
+    std::ofstream file(filename);
+    std::unordered_set<unsigned> set;
+
+    auto rand = [](unsigned min, unsigned max)
+    {
+        static thread_local std::mt19937 gen(std::random_device{}());
+        std::uniform_int_distribution<unsigned> dist(min, max);
+        return dist(gen);
+    };
+
+    for (unsigned i = 0; i < k; ++i)
+    {
+        unsigned vertex;
+        do
+        {
+            vertex = rand(0, n - 1);
+        } while (set.contains(vertex));
+        set.insert(vertex);
+        file << vertex << std::endl;
+    }
+    file.close();
+}
+
 void Benchmark::main()
 {
     SuiteSparseDownloader downloader;
     SuiteSparseDownloader::MatrixFilter filter;
 
-    /*
-    "mawi_201512020330"
-    "GAP-kron"
-    */
-
     /* FULL EXPERIMENT SET */
     filter.names = {
-        "GAP-urand",
-        "GAP-web",
-        "GAP-road",
-        "GAP-twitter",
-        "webbase-2001",
-        "uk-2005",
-        "europe_osm",
-        "road_usa",
-        "sk-2005",
-        "it-2004",
-        "kmer_V1r",
-        "com-Friendster"
+        "GAP-urand"
+        /*
+        "Spielman_k600",
+        "com-Friendster",
+        "GAP-kron",
+        "mawi_201512020330"
+        */
     };
 
     /* COMPRESSION EXPERIMENTS
@@ -102,6 +120,7 @@ void Benchmark::main()
 
     for (const auto& matrix: matrices)
     {
+        std::cout << "Graph valid: " << matrix.isValid << std::endl;
         if (!matrix.isValid) continue;
 
         std::cout
@@ -133,7 +152,7 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
-    constexpr bool orderingSave = false;
+    constexpr bool orderingSave = true;
     constexpr bool orderingLoad = false;
     constexpr bool bvssSave = false;
     constexpr bool bvssLoad = false;
@@ -151,7 +170,6 @@ double Benchmark::run(const Matrix& matrix)
         FULL_PADDING = true;
     }
     std::cout << "Full Padding: " << FULL_PADDING << std::endl;
-    std::cout << "Lazy update kernel: " << csc->isSocialNetwork() << std::endl;
 
     // binary names
     std::string bvssBinaryName = matrix.filename + "_bvss.bin";
@@ -175,7 +193,7 @@ double Benchmark::run(const Matrix& matrix)
 
     // bvss
     std::ofstream file(matrix.filename + ".csv");
-    BVSS* bvss = new BVSS(sliceSize, noMasks, csc->isSocialNetwork(), file);
+    BVSS* bvss = new BVSS(sliceSize, noMasks, file);
     if (std::filesystem::exists(std::filesystem::path(bvssBinaryName)) && bvssLoad)
     {
         bvss->constructFromBinary(bvssBinaryName);
@@ -193,8 +211,8 @@ double Benchmark::run(const Matrix& matrix)
     // kernel run
     BVSSBFSKernel* kernel = new BVSSBFSKernel(dynamic_cast<BitMatrix*>(bvss));
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 5;
-    unsigned nIgnore = 2;
+    unsigned nRun = 3;
+    unsigned nIgnore = 1;
     double total = 0;
     unsigned iter = 0;
     std::vector<BFSResult> results;
@@ -208,6 +226,10 @@ double Benchmark::run(const Matrix& matrix)
             {
                 results.emplace_back(result);
                 run += result.time;
+            }
+            else
+            {
+                delete[] result.levels;
             }
         }
     

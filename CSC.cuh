@@ -30,7 +30,6 @@ public:
 	[[nodiscard]] inline unsigned& getNNZ() {return m_NNZ;}
 	[[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
 	[[nodiscard]] inline unsigned*& getRows() {return m_Rows;}
-	[[nodiscard]] inline double& averageDegree() {return m_AverageDegree;}
 	[[nodiscard]] inline bool& isSocialNetwork() {return m_IsSocial;}
 
 	// metrics
@@ -38,6 +37,8 @@ public:
 	double averageBandwidth();
 	unsigned maxProfile();
 	double averageProfile();
+	unsigned maxDegree();
+	double averageDegree();
 	//
 
 	unsigned* orderFromBinary(std::string filename);
@@ -69,7 +70,6 @@ private:
 	unsigned* m_ColPtrs;
 	unsigned* m_Rows;
 
-	double m_AverageDegree;
 	bool m_IsSocial;
 };
 
@@ -97,15 +97,15 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 	for (unsigned iter = 0; iter < noLines; ++iter)
 	{
 		file >> j >> i; // read transpose
-		if (i == j) continue; 
 		if (!binary) file >> trash;
+		if (i == j) continue;
 
 		--i;
 		--j;
 
 		nnzs.emplace_back(i, j);
 
-		if (undirected && i != j)
+		if (undirected)
 		{
 			nnzs.emplace_back(j, i);
 		}
@@ -145,20 +145,13 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		m_Rows[iter] = nnzs[iter].first;
 	}
 
-	m_AverageDegree = 0;
 	for (unsigned j = 0; j < m_N; ++j)
 	{
 		m_ColPtrs[j + 1] += m_ColPtrs[j];
-		m_AverageDegree += m_ColPtrs[j + 1] - m_ColPtrs[j];
 	}
-	m_AverageDegree /= m_N;
-	std::cout << "Average degree: " << m_AverageDegree << std::endl;
+	std::cout << "Average degree: " << this->averageDegree() << std::endl;
+	std::cout << "Max degree: " << this->maxDegree() << std::endl;
 	//
-
-	std::cout << "Max Bandwidth: " << this->maxBandwidth() << std::endl;
-	std::cout << "Average Bandwidth: " << this->averageBandwidth() << std::endl;
-	std::cout << "Max Profile: " << this->maxProfile() << std::endl;
-	std::cout << "Average Profile: " << this->averageProfile() << std::endl;
 
 	m_IsSocial = this->socialNetworkHelper();
 	std::string print = m_IsSocial ? "The graph is a social network." : "The graph is not a social network.";
@@ -244,6 +237,27 @@ double CSC::averageProfile()
 	{
 		if (m_ColPtrs[j] + 2 > m_ColPtrs[j + 1]) continue;
 		average += static_cast<unsigned>(m_Rows[m_ColPtrs[j + 1] - 1] - m_Rows[m_ColPtrs[j]]); // assuming sorted adj
+	}
+	average /= m_N;
+	return average;
+}
+
+unsigned CSC::maxDegree()
+{
+	unsigned max = 0;
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		max = std::max(max, m_ColPtrs[j + 1] - m_ColPtrs[j]);
+	}
+	return max;
+}
+
+double CSC::averageDegree()
+{
+	double average = 0;
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		average += (m_ColPtrs[j + 1] - m_ColPtrs[j]);
 	}
 	average /= m_N;
 	return average;
