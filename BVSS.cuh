@@ -464,7 +464,7 @@ void BVSS::printBVSSData()
         max = std::max(max, slices);
     }
     average /= m_NoVirtualSliceSets;
-    std::cout << "Average number of slices in each set " << average << std::endl;
+    std::cout << "Average number of slices in each set: " << average << std::endl;
 
     double variance = 0;
     for (unsigned ss = 0; ss < m_NoVirtualSliceSets; ++ss)

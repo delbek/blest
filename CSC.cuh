@@ -141,7 +141,8 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		}
 	}
 
-	std::cout << "Average degree: " << this->averageDegree() << std::endl;
+	double average = this->averageDegree();
+	std::cout << "Average degree: " << average << std::endl;
 	std::cout << "Max degree: " << this->maxDegree() << std::endl;
 	//
 
@@ -153,7 +154,15 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		std::sort(m_Rows + start, m_Rows + end);
 	}
 
-	m_IsSocial = this->socialNetworkHelper();
+	m_IsSocial = (this->socialNetworkHelper() | (average > SOCIAL_THRESHOLD));
+	if (m_IsSocial)
+	{
+		std::cout << "The graph is a social network." << std::endl;
+	}
+	else
+	{
+		std::cout << "The graph is not a social network." << std::endl;
+	}
 }
 
 bool CSC::socialNetworkHelper()
@@ -224,6 +233,16 @@ void CSC::constructFromBinary(std::string filename)
 
     in.close();
 
+	std::cout << "Average degree: " << this->averageDegree() << std::endl;
+	std::cout << "Max degree: " << this->maxDegree() << std::endl;
+	if (m_IsSocial)
+	{
+		std::cout << "The graph is a social network." << std::endl;
+	}
+	else
+	{
+		std::cout << "The graph is not a social network." << std::endl;
+	}
     std::cout << "CSC read from binary." << std::endl;
 }
 

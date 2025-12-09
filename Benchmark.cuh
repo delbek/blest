@@ -91,7 +91,22 @@ void Benchmark::main()
 
     /* FULL EXPERIMENT SET */
     filter.names = {
-        "GAP-urand"
+        "GAP-road",
+        "GAP-twitter",
+        "GAP-web",
+        "GAP-kron",
+        "GAP-urand",
+        "webbase-2001",
+        "uk-2005",
+        "europe_osm",
+        "road_usa",
+        "sk-2005",
+        "it-2004",
+        "kmer_V1r",
+        "com-Friendster",
+        "mawi_201512020330",
+        "Spielman_k600",
+        "nlpkkt240"
     };
 
     /* COMPRESSION EXPERIMENTS
@@ -137,7 +152,7 @@ void Benchmark::main()
 
         Matrix currentMatrix(matrix.installationPath, MATRIX_DIRECTORY + matrix.name + ".txt", matrix.numericSymmetry, matrix.isBinary);
         double time = run(currentMatrix);
-        std::cout << "Time: " << time << std::endl;
+        std::cout << "Time: " << time << " ms." << std::endl;
         std::cout << "******************************" << std::endl;
     }
 }
@@ -147,9 +162,9 @@ double Benchmark::run(const Matrix& matrix)
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
     constexpr bool cscSave = true;
-    constexpr bool cscLoad = true;
+    constexpr bool cscLoad = false;
     constexpr bool orderingSave = true;
-    constexpr bool orderingLoad = true;
+    constexpr bool orderingLoad = false;
     constexpr bool bvssSave = false;
     constexpr bool bvssLoad = false;
 
@@ -178,12 +193,10 @@ double Benchmark::run(const Matrix& matrix)
 
     if (csc->isSocialNetwork()) 
     {
-        std::cout << "The graph is a social network." << std::endl;
         FULL_PADDING = false;
     }
     else
     {
-        std::cout << "The graph is not a social network." << std::endl;
         FULL_PADDING = true;
     }
 
@@ -243,7 +256,7 @@ double Benchmark::run(const Matrix& matrix)
         {
             BFSResult result = kernel->runBFS(source);
             result.sourceVertex = permutation[result.sourceVertex];
-            std::cout << "Source: " << result.sourceVertex << " - Time took: " << result.time << std::endl;
+            std::cout << "Source: " << result.sourceVertex << " - Time took: " << result.time * 1000 << " ms." << std::endl;
             if (i >= nIgnore)
             {
                 results.emplace_back(result);

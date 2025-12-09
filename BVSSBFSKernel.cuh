@@ -15,7 +15,7 @@ namespace BVSSBFSKernels
     }
 
     __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4SocialFullPad(
-                                                                    const unsigned* const __restrict__ sliceSetPtrs,
+                                                                    const SLICE_TYPE* const __restrict__ sliceSetPtrs,
                                                                     const unsigned* const __restrict__ virtualToReal,
                                                                     const unsigned* const __restrict__ realPtrs,
                                                                     const unsigned* const __restrict__ rowIds,
@@ -347,7 +347,7 @@ namespace BVSSBFSKernels
     }
 
     __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4RoadFullPad(
-                                                                const unsigned* const __restrict__ sliceSetPtrs,
+                                                                const SLICE_TYPE* const __restrict__ sliceSetPtrs,
                                                                 const unsigned* const __restrict__ virtualToReal,
                                                                 const unsigned* const __restrict__ realPtrs,
                                                                 const unsigned* const __restrict__ rowIds,
@@ -839,7 +839,7 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
                                                 0))
 
     unsigned* d_NoSliceSets;
-    unsigned* d_SliceSetPtrs;
+    SLICE_TYPE* d_SliceSetPtrs;
     unsigned* d_VirtualToReal;
     unsigned* d_RealPtrs;
     unsigned* d_RowIds;
@@ -859,14 +859,14 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
 
     // data structure
     gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1)))
     gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
     gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * noSlices))
     gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (noSlices / noMasks)))
 
     gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(unsigned) * (noSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * noSlices, cudaMemcpyHostToDevice))
