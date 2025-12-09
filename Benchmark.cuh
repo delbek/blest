@@ -161,10 +161,10 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
-    constexpr bool cscSave = true;
-    constexpr bool cscLoad = false;
-    constexpr bool orderingSave = true;
-    constexpr bool orderingLoad = false;
+    constexpr bool cscSave = false;
+    constexpr bool cscLoad = true;
+    constexpr bool orderingSave = false;
+    constexpr bool orderingLoad = true;
     constexpr bool bvssSave = false;
     constexpr bool bvssLoad = false;
 

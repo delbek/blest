@@ -322,6 +322,7 @@ unsigned* CSC::orderFromBinary(std::string filename)
 
     in.close();
     std::cout << "Ordering read from binary." << std::endl;
+	applyPermutation(inversePermutation);
 
 	return inversePermutation;
 }
@@ -483,7 +484,7 @@ unsigned* CSC::jackard(unsigned sliceSize)
     double sharedBestVal;
 
     unsigned noSliceSets = (m_N + sliceSize - 1) / sliceSize;
-    #pragma omp parallel
+    #pragma omp parallel num_threads(omp_get_max_threads())
     {
         for (unsigned sliceSet = 0; sliceSet < noSliceSets; ++sliceSet)
         {
