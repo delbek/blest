@@ -177,7 +177,7 @@ namespace BVSSBFSKernels
     }
 
     __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Social(
-                                                            const unsigned* const __restrict__ sliceSetPtrs,
+                                                            const SLICE_TYPE* const __restrict__ sliceSetPtrs,
                                                             const unsigned* const __restrict__ virtualToReal,
                                                             const unsigned* const __restrict__ realPtrs,
                                                             const unsigned* const __restrict__ rowIds,
@@ -219,8 +219,8 @@ namespace BVSSBFSKernels
                 unsigned rset = virtualToReal[vset];
                 MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
 
-                unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                unsigned tileStart = static_cast<unsigned>(sliceSetPtrs[vset] >> 2);
+                unsigned tileEnd = static_cast<unsigned>(sliceSetPtrs[vset + 1] >> 2);
 
                 unsigned tile = tileStart + laneID;
                 uint4 rows = {0, 0, 0, 0};
@@ -543,7 +543,7 @@ namespace BVSSBFSKernels
     }
 
     __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Road(
-                                                            const unsigned* const __restrict__ sliceSetPtrs,
+                                                            const SLICE_TYPE* const __restrict__ sliceSetPtrs,
                                                             const unsigned* const __restrict__ virtualToReal,
                                                             const unsigned* const __restrict__ realPtrs,
                                                             const unsigned* const __restrict__ rowIds,
@@ -584,8 +584,8 @@ namespace BVSSBFSKernels
                 unsigned rset = virtualToReal[vset];
                 MASK origFragB = static_cast<MASK>(frontierSlice[rset]);
 
-                unsigned tileStart = (sliceSetPtrs[vset] >> 2);
-                unsigned tileEnd = (sliceSetPtrs[vset + 1] >> 2);
+                unsigned tileStart = static_cast<unsigned>(sliceSetPtrs[vset] >> 2);
+                unsigned tileEnd = static_cast<unsigned>(sliceSetPtrs[vset + 1] >> 2);
 
                 unsigned tile = tileStart + laneID;
                 uint4 rows = {0, 0, 0, 0};
@@ -773,10 +773,10 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();
     unsigned noRealSliceSets = bvss->getNoRealSliceSets();
-    unsigned noSlices = bvss->getNoSlices();
+    SLICE_TYPE noSlices = bvss->getNoSlices();
     bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
     unsigned noSliceSets = bvss->getNoVirtualSliceSets();
-    unsigned* sliceSetPtrs = bvss->getSliceSetPtrs();
+    SLICE_TYPE* sliceSetPtrs = bvss->getSliceSetPtrs();
     unsigned* virtualToReal = bvss->getVirtualToReal();
     unsigned* realPtrs = bvss->getRealPtrs();
     unsigned* rowIds = bvss->getRowIds();

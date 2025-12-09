@@ -26,6 +26,9 @@ public:
 	CSC& operator=(CSC&& other) noexcept = delete;
 	~CSC();
 
+	void constructFromBinary(std::string filename);
+    void saveToBinary(std::string filename);
+
 	[[nodiscard]] inline unsigned& getN() {return m_N;}
 	[[nodiscard]] inline unsigned& getNNZ() {return m_NNZ;}
 	[[nodiscard]] inline unsigned*& getColPtrs() {return m_ColPtrs;}
@@ -67,10 +70,10 @@ private:
 private:
 	unsigned m_N;
 	unsigned m_NNZ;
+	bool m_IsSocial;
+
 	unsigned* m_ColPtrs;
 	unsigned* m_Rows;
-
-	bool m_IsSocial;
 };
 
 CSC::CSC(std::string filename, bool undirected, bool binary)
@@ -91,9 +94,11 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 
 	file >> m_N >> m_N >> noLines;
 
-	std::vector<std::pair<unsigned, unsigned>> nnzs;
+	std::vector<std::vector<unsigned>> adjList(m_N);
 
+	// there exists an edge j -> i
 	unsigned i, j;
+	m_NNZ = 0;
 	for (unsigned iter = 0; iter < noLines; ++iter)
 	{
 		file >> j >> i; // read transpose
@@ -103,59 +108,52 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		--i;
 		--j;
 
-		nnzs.emplace_back(i, j);
+		adjList[j].emplace_back(i);
+		++m_NNZ;
 
 		if (undirected)
 		{
-			nnzs.emplace_back(j, i);
+			++m_NNZ;
+			adjList[i].emplace_back(j);
 		}
 	}
-
 	file.close();
 
 	std::cout << "Number of vertices: " << m_N << std::endl;
-	std::cout << "Number of edges: " << nnzs.size() << std::endl;
-	std::cout << "Sparsity: " << std::fixed << static_cast<double>(nnzs.size()) / (static_cast<double>(m_N) * static_cast<double>(m_N)) << std::endl;
+	std::cout << "Number of edges: " << m_NNZ << std::endl;
+	std::cout << "Sparsity: " << std::fixed << static_cast<double>(m_NNZ) / (static_cast<double>(m_N) * static_cast<double>(m_N)) << std::endl;
 
-	// there exists an edge from j (second) -> i (first)
-
-	// normal
-	// sort i's
-	std::sort(nnzs.begin(), nnzs.end(), [](const auto& a, const auto& b) 
-	{
-		if (a.second == b.second)
-		{
-			return a.first < b.first;
-		}
-		else
-		{
-			return a.second < b.second;
-		}
-	});
-
-	m_NNZ = nnzs.size();
 	m_ColPtrs = new unsigned[m_N + 1];
 	m_Rows = new unsigned[m_NNZ];
 
 	std::fill(m_ColPtrs, m_ColPtrs + m_N + 1, 0);
-
-	for (unsigned iter = 0; iter < m_NNZ; ++iter)
+	for (unsigned j = 0; j < m_N; ++j)
 	{
-		++m_ColPtrs[nnzs[iter].second + 1];
-		m_Rows[iter] = nnzs[iter].first;
+		m_ColPtrs[j + 1] = adjList[j].size();
 	}
 
 	for (unsigned j = 0; j < m_N; ++j)
 	{
 		m_ColPtrs[j + 1] += m_ColPtrs[j];
+		for (unsigned nnz = 0; nnz < adjList[j].size(); ++nnz)
+		{
+			m_Rows[m_ColPtrs[j] + nnz] = adjList[j][nnz];
+		}
 	}
+
 	std::cout << "Average degree: " << this->averageDegree() << std::endl;
 	std::cout << "Max degree: " << this->maxDegree() << std::endl;
 	//
 
+	#pragma omp parallel for num_threads(omp_get_max_threads()) schedule(dynamic, 2048)
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		unsigned start = m_ColPtrs[j];
+		unsigned end = m_ColPtrs[j + 1];
+		std::sort(m_Rows + start, m_Rows + end);
+	}
+
 	m_IsSocial = this->socialNetworkHelper();
-	std::string print = m_IsSocial ? "The graph is a social network." : "The graph is not a social network.";
-	std::cout << print << std::endl;
 }
 
 bool CSC::socialNetworkHelper()
@@ -194,6 +192,39 @@ CSC::~CSC()
 {
 	delete[] m_ColPtrs;
 	delete[] m_Rows;
+}
+
+void CSC::saveToBinary(std::string filename)
+{
+    std::ofstream out(filename, std::ios::binary);
+
+    out.write(reinterpret_cast<const char*>(&m_N), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_NNZ), (sizeof(unsigned)));
+	out.write(reinterpret_cast<const char*>(&m_IsSocial), (sizeof(bool)));
+
+    out.write(reinterpret_cast<const char*>(m_ColPtrs), (sizeof(unsigned) * (m_N + 1)));
+    out.write(reinterpret_cast<const char*>(m_Rows), (sizeof(unsigned) * m_NNZ));
+
+    out.close();
+}
+
+void CSC::constructFromBinary(std::string filename)
+{
+    std::ifstream in(filename, std::ios::binary);
+
+    in.read(reinterpret_cast<char*>(&m_N), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_NNZ), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_IsSocial), sizeof(bool));
+
+    m_ColPtrs = new unsigned[m_N + 1];
+    in.read(reinterpret_cast<char*>(m_ColPtrs), (sizeof(unsigned) * (m_N + 1)));
+
+    m_Rows = new unsigned[m_NNZ];
+    in.read(reinterpret_cast<char*>(m_Rows), (sizeof(unsigned) * m_NNZ));
+
+    in.close();
+
+    std::cout << "CSC read from binary." << std::endl;
 }
 
 unsigned CSC::maxBandwidth()

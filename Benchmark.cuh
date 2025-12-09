@@ -92,12 +92,6 @@ void Benchmark::main()
     /* FULL EXPERIMENT SET */
     filter.names = {
         "GAP-urand"
-        /*
-        "Spielman_k600",
-        "com-Friendster",
-        "GAP-kron",
-        "mawi_201512020330"
-        */
     };
 
     /* COMPRESSION EXPERIMENTS
@@ -152,28 +146,46 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
+    constexpr bool cscSave = true;
+    constexpr bool cscLoad = true;
     constexpr bool orderingSave = true;
-    constexpr bool orderingLoad = false;
+    constexpr bool orderingLoad = true;
     constexpr bool bvssSave = false;
     constexpr bool bvssLoad = false;
 
-    // csc
-    CSC* csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
-    std::cout << "Is symmetric: " << csc->checkSymmetry() << std::endl;
+    // binary names
+    std::string cscBinaryName = matrix.filename + "_csc.bin";
+    std::string orderingBinaryName = matrix.filename + "_ordering.bin";
+    std::string bvssBinaryName = matrix.filename + "_bvss.bin";
     //
+
+    // csc
+    CSC* csc;
+    if (std::filesystem::exists(std::filesystem::path(cscBinaryName)) && cscLoad)
+    {
+        csc = new CSC;
+        csc->constructFromBinary(cscBinaryName);
+    }
+    else
+    {
+        csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
+        if (cscSave)
+        {
+            csc->saveToBinary(cscBinaryName);
+        }
+    }
+    //
+
     if (csc->isSocialNetwork()) 
     {
+        std::cout << "The graph is a social network." << std::endl;
         FULL_PADDING = false;
     }
     else
     {
+        std::cout << "The graph is not a social network." << std::endl;
         FULL_PADDING = true;
     }
-    std::cout << "Full Padding: " << FULL_PADDING << std::endl;
-
-    // binary names
-    std::string bvssBinaryName = matrix.filename + "_bvss.bin";
-    std::string orderingBinaryName = matrix.filename + "_ordering.bin";
 
     // csc ordering
     unsigned* inversePermutation = nullptr;
@@ -194,6 +206,7 @@ double Benchmark::run(const Matrix& matrix)
     // bvss
     std::ofstream file(matrix.filename + ".csv");
     BVSS* bvss = new BVSS(sliceSize, noMasks, file);
+    std::cout << "BVSS construction started." << std::endl;
     if (std::filesystem::exists(std::filesystem::path(bvssBinaryName)) && bvssLoad)
     {
         bvss->constructFromBinary(bvssBinaryName);
@@ -207,12 +220,19 @@ double Benchmark::run(const Matrix& matrix)
         }
     }
     //
+    std::cout << "BVSS constructed." << std::endl;
 
+    std::cout << "Kernels launching..." << std::endl;
     // kernel run
     BVSSBFSKernel* kernel = new BVSSBFSKernel(dynamic_cast<BitMatrix*>(bvss));
     std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-    unsigned nRun = 3;
-    unsigned nIgnore = 1;
+    unsigned* permutation = new unsigned[csc->getN()];
+    for (unsigned old = 0; old < csc->getN(); ++old)
+    {
+        permutation[inversePermutation[old]] = old;
+    }
+    unsigned nRun = 1;
+    unsigned nIgnore = 0;
     double total = 0;
     unsigned iter = 0;
     std::vector<BFSResult> results;
@@ -222,6 +242,8 @@ double Benchmark::run(const Matrix& matrix)
         for (unsigned i = 0; i < nRun; ++i)
         {
             BFSResult result = kernel->runBFS(source);
+            result.sourceVertex = permutation[result.sourceVertex];
+            std::cout << "Source: " << result.sourceVertex << " - Time took: " << result.time << std::endl;
             if (i >= nIgnore)
             {
                 results.emplace_back(result);
@@ -240,16 +262,9 @@ double Benchmark::run(const Matrix& matrix)
     total /= iter;
     //
 
-    unsigned* permutation = new unsigned[csc->getN()];
-    for (unsigned old = 0; old < csc->getN(); ++old)
-    {
-        permutation[inversePermutation[old]] = old;
-    }
-
     // result save
     for (auto& result: results)
     {
-        result.sourceVertex = permutation[result.sourceVertex];
         unsigned* newLevels = new unsigned[csc->getN()];
         for (unsigned old = 0; old < csc->getN(); ++old)
         {

@@ -40,11 +40,11 @@ public:
     [[nodiscard]] inline unsigned& getNoMasks() {return m_NoMasks;}
     [[nodiscard]] inline unsigned& getNoRealSliceSets() {return m_NoRealSliceSets;}
     [[nodiscard]] inline unsigned& getNoVirtualSliceSets() {return m_NoVirtualSliceSets;}
-    [[nodiscard]] inline unsigned& getNoSlices() {return m_NoSlices;}
-    [[nodiscard]] inline unsigned& getNoUnpaddedSlices() {return m_NoUnpaddedSlices;}
-    [[nodiscard]] inline unsigned& getNoPaddedSlices() {return m_NoPaddedSlices;}
+    [[nodiscard]] inline SLICE_TYPE& getNoSlices() {return m_NoSlices;}
+    [[nodiscard]] inline SLICE_TYPE& getNoUnpaddedSlices() {return m_NoUnpaddedSlices;}
+    [[nodiscard]] inline SLICE_TYPE& getNoPaddedSlices() {return m_NoPaddedSlices;}
     [[nodiscard]] inline double& getUpdateDivergence() {return m_UpdateDivergence;}
-    [[nodiscard]] inline unsigned*& getSliceSetPtrs() {return m_SliceSetPtrs;}
+    [[nodiscard]] inline SLICE_TYPE*& getSliceSetPtrs() {return m_SliceSetPtrs;}
     [[nodiscard]] inline unsigned*& getVirtualToReal() {return m_VirtualToReal;}
     [[nodiscard]] inline unsigned*& getRealPtrs() {return m_RealPtrs;}
     [[nodiscard]] inline unsigned*& getRowIds() {return m_RowIds;}
@@ -60,12 +60,12 @@ private:
     unsigned m_NoMasks;
     unsigned m_NoRealSliceSets;
     unsigned m_NoVirtualSliceSets;
-    unsigned m_NoSlices;
-    unsigned m_NoUnpaddedSlices;
-    unsigned m_NoPaddedSlices;
+    SLICE_TYPE m_NoSlices;
+    SLICE_TYPE m_NoUnpaddedSlices;
+    SLICE_TYPE m_NoPaddedSlices;
     double m_UpdateDivergence;
 
-    unsigned* m_SliceSetPtrs;
+    SLICE_TYPE* m_SliceSetPtrs;
     unsigned* m_VirtualToReal;
     unsigned* m_RealPtrs;
     unsigned* m_RowIds;
@@ -111,12 +111,12 @@ void BVSS::saveToBinary(std::string filename)
     out.write(reinterpret_cast<const char*>(&m_NoMasks), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoRealSliceSets), (sizeof(unsigned)));
     out.write(reinterpret_cast<const char*>(&m_NoVirtualSliceSets), (sizeof(unsigned)));
-    out.write(reinterpret_cast<const char*>(&m_NoSlices), (sizeof(unsigned)));
-    out.write(reinterpret_cast<const char*>(&m_NoUnpaddedSlices), (sizeof(unsigned)));
-    out.write(reinterpret_cast<const char*>(&m_NoPaddedSlices), (sizeof(unsigned)));
+    out.write(reinterpret_cast<const char*>(&m_NoSlices), (sizeof(SLICE_TYPE)));
+    out.write(reinterpret_cast<const char*>(&m_NoUnpaddedSlices), (sizeof(SLICE_TYPE)));
+    out.write(reinterpret_cast<const char*>(&m_NoPaddedSlices), (sizeof(SLICE_TYPE)));
     out.write(reinterpret_cast<const char*>(&m_UpdateDivergence), (sizeof(double)));
 
-    out.write(reinterpret_cast<const char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
+    out.write(reinterpret_cast<const char*>(m_SliceSetPtrs), (sizeof(SLICE_TYPE) * (m_NoVirtualSliceSets + 1)));
     out.write(reinterpret_cast<const char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
     out.write(reinterpret_cast<const char*>(m_RealPtrs), (sizeof(unsigned) * (m_NoRealSliceSets + 1)));
     out.write(reinterpret_cast<const char*>(m_RowIds), (sizeof(unsigned) * m_NoSlices));
@@ -134,13 +134,13 @@ void BVSS::constructFromBinary(std::string filename)
     in.read(reinterpret_cast<char*>(&m_NoMasks), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoRealSliceSets), sizeof(unsigned));
     in.read(reinterpret_cast<char*>(&m_NoVirtualSliceSets), sizeof(unsigned));
-    in.read(reinterpret_cast<char*>(&m_NoSlices), sizeof(unsigned));
-    in.read(reinterpret_cast<char*>(&m_NoUnpaddedSlices), sizeof(unsigned));
-    in.read(reinterpret_cast<char*>(&m_NoPaddedSlices), sizeof(unsigned));
+    in.read(reinterpret_cast<char*>(&m_NoSlices), sizeof(SLICE_TYPE));
+    in.read(reinterpret_cast<char*>(&m_NoUnpaddedSlices), sizeof(SLICE_TYPE));
+    in.read(reinterpret_cast<char*>(&m_NoPaddedSlices), sizeof(SLICE_TYPE));
     in.read(reinterpret_cast<char*>(&m_UpdateDivergence), sizeof(double));
 
-    m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
-    in.read(reinterpret_cast<char*>(m_SliceSetPtrs), (sizeof(unsigned) * (m_NoVirtualSliceSets + 1)));
+    m_SliceSetPtrs = new SLICE_TYPE[m_NoVirtualSliceSets + 1];
+    in.read(reinterpret_cast<char*>(m_SliceSetPtrs), (sizeof(SLICE_TYPE) * (m_NoVirtualSliceSets + 1)));
 
     m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
     in.read(reinterpret_cast<char*>(m_VirtualToReal), (sizeof(unsigned) * m_NoVirtualSliceSets));
@@ -159,7 +159,7 @@ void BVSS::constructFromBinary(std::string filename)
     std::cout << "BVSS read from binary." << std::endl;
 
     this->printBVSSData();
-    this->bvssAnalysis();
+    //this->bvssAnalysis();
 }
 
 void BVSS::constructFromCSCMatrix(CSC* csc)
@@ -264,7 +264,7 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
         m_RealPtrs[rset + 1] += m_RealPtrs[rset];
     }
 
-    m_SliceSetPtrs = new unsigned[m_NoVirtualSliceSets + 1];
+    m_SliceSetPtrs = new SLICE_TYPE[m_NoVirtualSliceSets + 1];
     m_VirtualToReal = new unsigned[m_NoVirtualSliceSets];
     
     m_SliceSetPtrs[0] = 0;
@@ -276,7 +276,7 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
     m_NoSlices = m_SliceSetPtrs[m_NoVirtualSliceSets];
 
     m_RowIds = new unsigned[m_NoSlices];
-    unsigned idx = 0;
+    SLICE_TYPE idx = 0;
     for (unsigned vset = 0; vset < m_NoVirtualSliceSets; ++vset)
     {
         for (unsigned i = 0; i < vsets[vset].rows.size(); ++i)
@@ -298,7 +298,7 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
     std::cout << "BVSS construction took: " << end - start << " seconds." << std::endl;
     
     this->printBVSSData();
-    this->bvssAnalysis();
+    //this->bvssAnalysis();
 }
 
 void BVSS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
@@ -505,20 +505,21 @@ void BVSS::printBVSSData()
     std::cout << "Update divergence is: " << m_UpdateDivergence << std::endl;
 
     m_NoUnpaddedSlices = m_NoSlices - m_NoPaddedSlices;
-    unsigned bitsTotal = m_NoSlices * m_SliceSize;
-    unsigned bitsUnpadded = m_NoUnpaddedSlices * m_SliceSize;
+    SLICE_TYPE bitsTotal = m_NoSlices * m_SliceSize;
+    SLICE_TYPE bitsUnpadded = m_NoUnpaddedSlices * m_SliceSize;
     double compressionRatio = ((static_cast<double>(totalNumberOfEdgesCheck) / m_NoUnpaddedSlices) / m_SliceSize);
     std::cout << "Total unpadded slices: " << m_NoUnpaddedSlices << std::endl;
     std::cout << "Total padded slices: " << m_NoPaddedSlices << std::endl;
     std::cout << "Total connectivity bits used by the data structure: " << bitsTotal << std::endl;
     std::cout << "Total connectivity bits used by the unpadded part of the data structure: " << bitsUnpadded << std::endl;
-    std::cout << "Compression ratio: " << compressionRatio<< std::endl;
+    std::cout << "Compression ratio: " << compressionRatio << std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
     fileFlush(m_File, m_N); fileFlush(m_File, totalNumberOfEdgesCheck); fileFlush(m_File, m_UpdateDivergence); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
     fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
     fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, m_NoUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
     m_File << std::endl;
+    m_File << "Source\tTotalLevels\tTotalVisited\tTime(ms)" << std::endl;
 }
 
 void BVSS::bvssAnalysis()
@@ -532,7 +533,7 @@ void BVSS::bvssAnalysis()
     {
         for (unsigned vset = m_RealPtrs[rset]; vset < m_RealPtrs[rset + 1]; ++vset)
         {
-            for (unsigned slice = m_SliceSetPtrs[vset]; slice < m_SliceSetPtrs[vset + 1]; ++slice)
+            for (SLICE_TYPE slice = m_SliceSetPtrs[vset]; slice < m_SliceSetPtrs[vset + 1]; ++slice)
             {
                 MASK current = m_Masks[slice / m_NoMasks];
                 unsigned shift = (slice % m_NoMasks) * m_SliceSize;
@@ -556,8 +557,6 @@ void BVSS::bvssAnalysis()
         fileFlush(m_File, counts[i]);
     }
     m_File << std::endl;
-
-    m_File << "Source\tTotalLevels\tTotalVisited\tTime(ms)" << std::endl;
 }
 
 void BVSS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time)

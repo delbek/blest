@@ -17,6 +17,7 @@ static bool FULL_PADDING;
 #define ORDERING
 #define LAZY_KERNEL_THRESHOLD 25000
 #define DIRECTION_SWITCHING_CONSTANT 1
+#define SLICE_TYPE unsigned long long
 
 #define K 128
 #define MASK unsigned
