@@ -515,6 +515,13 @@ void BVSS::printBVSSData()
     std::cout << "Compression ratio: " << compressionRatio << std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
+    double bvss = (m_NoVirtualSliceSets * 4) + ((m_NoRealSliceSets + 1) * 4) + (m_NoSlices * 4) + ((m_NoSlices / m_NoMasks) * 4);
+    double dynamics = (m_NoVirtualSliceSets * 8) + ((m_N / 32) * 12);
+    double level = m_N * 4;
+    std::cout << "Memory consumption (BVSS): " << bvss * 0.000000001 << " GB." << std::endl;
+    std::cout << "Memory consumption (BVSS + Dynamic Arrays): " << (bvss + dynamics) * 0.000000001 << " GB." << std::endl;
+    std::cout << "Memory consumption (BVSS + Dynamic Arrays + Level Array): " << (bvss + dynamics + level) * 0.000000001 << " GB." << std::endl;
+
     fileFlush(m_File, m_N); fileFlush(m_File, totalNumberOfEdgesCheck); fileFlush(m_File, m_UpdateDivergence); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
     fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
     fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, m_NoUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);

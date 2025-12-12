@@ -109,21 +109,6 @@ void Benchmark::main()
         "nlpkkt240"
     };
 
-    /* COMPRESSION EXPERIMENTS
-    filter.names = {
-        "web-BerkStan"
-    };
-    */
-
-    /* UPDATE DIVERGENCE EXPERIMENTS
-    filter.names = {
-        "GAP-road",
-        "europe_osm",
-        "delaunay_n24",
-        "rgg_n_2_24_s0"
-    };
-    */
-
     std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
     downloader.downloadMatrices(MATRIX_DIRECTORY, matrices);
 

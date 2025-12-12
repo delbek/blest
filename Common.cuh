@@ -13,7 +13,8 @@
 #include <cmath>
 using namespace cooperative_groups;
 
-static bool FULL_PADDING; 
+#define DOUBLE_MAX std::numeric_limits<double>::max()
+static bool FULL_PADDING;
 #define ORDERING
 #define LAZY_KERNEL_THRESHOLD 25000
 #define SOCIAL_THRESHOLD 18
