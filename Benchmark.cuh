@@ -8,7 +8,7 @@
 #include <unordered_set>
 #include <random>
 
-#define MATRIX_DIRECTORY "/arf/scratch/delbek/"
+#define MATRIX_DIRECTORY "YOUR_MATRIX_DIRECTORY/"
 
 struct Matrix
 {
