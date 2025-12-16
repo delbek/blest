@@ -9,8 +9,8 @@
 #SBATCH -C H200
 #SBATCH --mem=1000G
 #SBATCH --time=3-00:00:00
-#SBATCH --output=/arf/home/delbek/sutensor/res/out-%j.out
-#SBATCH --error=/arf/home/delbek/sutensor/res/out-%j.err
+#SBATCH --output=/arf/home/delbek/blest/res/out-%j.out
+#SBATCH --error=/arf/home/delbek/blest/res/out-%j.err
 #SBATCH --export=NONE
 
 module purge
@@ -18,7 +18,7 @@ unset SLURM_EXPORT_ENV
 
 source /etc/profile.d/modules.sh
 
-repo_directory="/arf/home/delbek/sutensor/"
+repo_directory="/arf/home/delbek/blest/"
 
 module use /arf/sw/modulefiles
 module load comp/cmake/3.31.1
@@ -48,7 +48,7 @@ cmake ..
 make
 cd ..
 
-srun ./build/sutensor
-#srun valgrind --tool=memcheck --leak-check=no --show-leak-kinds=none --track-origins=no --read-var-info=yes --num-callers=50 --error-limit=no ./build/sutensor
-#srun ncu --config-file off --export /arf/home/delbek/profiler_reports/profile%i.ncu-rep --force-overwrite --section ComputeWorkloadAnalysis --section InstructionStats --section MemoryWorkloadAnalysis --section MemoryWorkloadAnalysis_Chart --section MemoryWorkloadAnalysis_Tables --section Occupancy --section PmSampling --section PmSampling_WarpStates --section SchedulerStats --section SourceCounters --section SpeedOfLight --section SpeedOfLight_HierarchicalDoubleRooflineChart --section SpeedOfLight_HierarchicalHalfRooflineChart --section SpeedOfLight_HierarchicalSingleRooflineChart --section SpeedOfLight_HierarchicalTensorRooflineChart --section SpeedOfLight_RooflineChart --section WarpStateStats --section WorkloadDistribution --import-source yes --source-folder /arf/home/delbek/sutensor/ /arf/home/delbek/sutensor/build/sutensor
-#srun compute-sanitizer --tool memcheck --launch-timeout 10000000 ./build/sutensor
+srun ./build/blest
+#srun valgrind --tool=memcheck --leak-check=no --show-leak-kinds=none --track-origins=no --read-var-info=yes --num-callers=50 --error-limit=no ./build/blest
+#srun ncu --config-file off --export /arf/home/delbek/profiler_reports/profile%i.ncu-rep --force-overwrite --section ComputeWorkloadAnalysis --section InstructionStats --section MemoryWorkloadAnalysis --section MemoryWorkloadAnalysis_Chart --section MemoryWorkloadAnalysis_Tables --section Occupancy --section PmSampling --section PmSampling_WarpStates --section SchedulerStats --section SourceCounters --section SpeedOfLight --section SpeedOfLight_HierarchicalDoubleRooflineChart --section SpeedOfLight_HierarchicalHalfRooflineChart --section SpeedOfLight_HierarchicalSingleRooflineChart --section SpeedOfLight_HierarchicalTensorRooflineChart --section SpeedOfLight_RooflineChart --section WarpStateStats --section WorkloadDistribution --import-source yes --source-folder /arf/home/delbek/blest/ /arf/home/delbek/blest/build/blest
+#srun compute-sanitizer --tool memcheck --launch-timeout 10000000 ./build/blest

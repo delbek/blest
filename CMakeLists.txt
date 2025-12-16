@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(sutensor)
+project(blest)
 
 # C++
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -25,7 +25,7 @@ find_package(CURL REQUIRED)
 include_directories(.)
 include_directories(Gorder)
 
-add_executable(sutensor
+add_executable(blest
     main.cu
     # Gorder
     Gorder/Graph.cpp
@@ -34,7 +34,7 @@ add_executable(sutensor
     # Gorder
 )
 
-target_link_libraries(sutensor
+target_link_libraries(blest
     CURL::libcurl
     OpenMP::OpenMP_CXX
     cuda
@@ -42,7 +42,7 @@ target_link_libraries(sutensor
     ${CUDA_LIBRARIES}
 )
 
-target_compile_options(sutensor PRIVATE
+target_compile_options(blest PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-O3 -g -std=c++20>
   $<$<COMPILE_LANGUAGE:CUDA>:-O3 --generate-line-info --std=c++20 -Xptxas=-v>
 )

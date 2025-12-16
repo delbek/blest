@@ -144,12 +144,12 @@ double Benchmark::run(const Matrix& matrix)
 {
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
-    constexpr bool cscSave = false;
+    constexpr bool cscSave = true;
     constexpr bool cscLoad = true;
-    constexpr bool orderingSave = false;
+    constexpr bool orderingSave = true;
     constexpr bool orderingLoad = true;
-    constexpr bool bvssSave = false;
-    constexpr bool bvssLoad = false;
+    constexpr bool bvssSave = true;
+    constexpr bool bvssLoad = true;
 
     // binary names
     std::string cscBinaryName = matrix.filename + "_csc.bin";

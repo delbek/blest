@@ -6,6 +6,5 @@ res/
 *.txt
 *.out
 *.err
-PPoPP25_AE/
 *.ncu-rep
 *.mtx.csv

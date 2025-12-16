@@ -1,0 +1,1 @@
+1-Enter Benchmark.cuh file and change the macro defined on top of it
