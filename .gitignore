@@ -8,3 +8,4 @@ res/
 *.err
 *.ncu-rep
 *.mtx.csv
+run_cluster.sh
