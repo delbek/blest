@@ -1,3 +1,5 @@
+# Blest: Blazingly Efficient BFS using Tensor Cores
+
 1. Open `Benchmark.cuh` and set the `MATRIX_DIRECTORY` macro (defined at the top of the file) to your matrix/graph folder, e.g.
    ```cpp
    #define MATRIX_DIRECTORY "YOUR_MATRIX_DIRECTORY/"
