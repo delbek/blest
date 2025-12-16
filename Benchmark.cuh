@@ -99,8 +99,6 @@ void Benchmark::main()
         "webbase-2001",
         "uk-2005",
         "europe_osm",
-        "road_usa",
-        "sk-2005",
         "it-2004",
         "kmer_V1r",
         "com-Friendster",
