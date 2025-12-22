@@ -5,10 +5,10 @@ static void print_usage(const char* prog)
     std::cerr
         << "Usage: " << prog
         << " -d <directory> -g <graph_name> -j <0|1> -w <window_size>\n"
-        << "  -d  Absolute directory path under which your BFS source files are located and to which BLEST will dump results and intermediate files (you do not need to download graphs as the library will download it for you if it finds in SuiteSparse) (e.g, /home/blest/source_files/)\n"
-        << "  -g  Graph name (e.g, GAP-twitter)\n"
-        << "  -j  Jaccard enabled (0 or 1) -- WE RECOMMEND THIS TO BE SET TO 1\n"
-        << "  -w  Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET TO 65536\n";
+        << "  -d \t Absolute directory path under which your BFS source files are located and to which BLEST will dump results and intermediate files (e.g, /home/blest/intermediate/)\n"
+        << "  -g \t Graph name (e.g, GAP-twitter)\n"
+        << "  -j \t Jaccard enabled (0 or 1) -- WE RECOMMEND THIS TO BE SET TO 1\n"
+        << "  -w \t Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET TO 65536\n";
 }
 
 static Config parse_args(int argc, char** argv)
