@@ -2,20 +2,20 @@
 
 #include <iostream>
 #include "omp.h"
-#include <cuda_runtime.h>
-#include <cooperative_groups.h>
 #include <limits>
 #include <fstream>
 #include <type_traits>
-#include <cuda/pipeline>
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <cuda_runtime.h>
+#include <cooperative_groups.h>
 using namespace cooperative_groups;
 
-#define DOUBLE_MAX std::numeric_limits<double>::max()
+static bool JACKARD_ON;
+static unsigned WINDOW_SIZE;
+
 static bool FULL_PADDING;
-#define ORDERING
 #define LAZY_KERNEL_THRESHOLD 25000
 #define SOCIAL_THRESHOLD 18
 #define DIRECTION_SWITCHING_CONSTANT 1

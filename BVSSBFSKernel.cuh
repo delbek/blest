@@ -154,7 +154,7 @@ namespace BVSSBFSKernels
                                 if (lane >= stride) scan += from;
                             }
                             
-                            unsigned base;
+                            unsigned base = 0;
                             if (lane == coalesced.size() - 1)
                             {
                                 base = atomicAdd(frontierNextSizePtr, scan);
@@ -324,7 +324,7 @@ namespace BVSSBFSKernels
                                 if (lane >= stride) scan += from;
                             }
                             
-                            unsigned base;
+                            unsigned base = 0;
                             if (lane == coalesced.size() - 1)
                             {
                                 base = atomicAdd(frontierNextSizePtr, scan);

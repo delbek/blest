@@ -49,6 +49,7 @@ public:
 	unsigned* reorder(unsigned sliceSize);
 	bool checkSymmetry();
 	CSC* symmetrize();
+	CSC* transpose();
 
 private:
 	bool socialNetworkHelper();
@@ -57,8 +58,8 @@ private:
 	unsigned* random();
 	unsigned* jackard(unsigned sliceSize);
 	unsigned* jackardWithWindow(unsigned sliceSize, unsigned windowSize);
-	unsigned* rcmWithJackard(unsigned sliceSize);
-	unsigned* gorderWithJackard(unsigned sliceSize);
+	unsigned* rcmWithJackard(unsigned sliceSize, unsigned windowSize);
+	unsigned* gorderWithJackard(unsigned sliceSize, unsigned windowSize);
 	unsigned* gorder(unsigned sliceSize);
 	unsigned* degreeSort(bool ascending = true);
 	unsigned findPseudoPeripheralNode(CSC* csc, unsigned startNode);
@@ -340,20 +341,24 @@ unsigned* CSC::reorder(unsigned sliceSize)
 {
 	double start = omp_get_wtime();
 	unsigned* inversePermutation = nullptr;
-	#ifdef ORDERING
 	if (this->isSocialNetwork())
 	{
-		std::cout << "Reordering with JaccardWithWindows" << std::endl;
-		inversePermutation = this->gorderWithJackard(sliceSize);
+		if (JACKARD_ON)
+		{
+			std::cout << "Reordering with JaccardWithWindows" << std::endl;
+			inversePermutation = this->jackardWithWindow(sliceSize, WINDOW_SIZE);
+		}
+		else
+		{
+			std::cout << "Natural Ordering" << std::endl;
+			inversePermutation = this->natural();
+		}
 	}
 	else
 	{
 		std::cout << "Reordering with RCM" << std::endl;
 		inversePermutation = this->rcm();
 	}
-	#else
-	inversePermutation = this->natural();
-	#endif
 	double end = omp_get_wtime();
 	std::cout << "Time took to reorder: " << end - start << std::endl;
 	return inversePermutation;
@@ -384,6 +389,44 @@ bool CSC::checkSymmetry()
         }
     }
     return true;
+}
+
+CSC* CSC::transpose()
+{
+	CSC* transpose = new CSC;
+	transpose->m_ColPtrs = new unsigned[m_N + 1];
+	transpose->m_Rows = new unsigned[m_ColPtrs[m_N]];
+
+	unsigned* ptrs = transpose->m_ColPtrs;
+	unsigned* ids = transpose->m_Rows;
+
+	std::fill(ptrs, ptrs + m_N + 1, 0);
+	for (unsigned j = 0; j <  m_ColPtrs[m_N]; ++j)
+	{
+		++ptrs[m_Rows[j] + 1];
+	}
+
+	for (unsigned i = 1; i <= m_N; ++i)
+	{
+		ptrs[i] += ptrs[i - 1];
+	}
+
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		for (unsigned p = m_ColPtrs[j]; p < m_ColPtrs[j + 1]; ++p)
+		{
+			unsigned i = m_Rows[p];
+			ids[ptrs[i]++] = j;
+		}
+	}
+
+	for (unsigned i = m_N; i > 0; --i)
+	{
+		ptrs[i] = ptrs[i - 1];
+	}
+	ptrs[0] = 0;
+
+	return transpose;
 }
 
 CSC* CSC::symmetrize()
@@ -627,122 +670,211 @@ unsigned* CSC::jackard(unsigned sliceSize)
 
 unsigned* CSC::jackardWithWindow(unsigned sliceSize, unsigned windowSize)
 {
-    assert(windowSize % sliceSize == 0);
+	assert(windowSize % sliceSize == 0);
 
+	CSC* transpose = this->transpose();
+	unsigned* ptrs = transpose->getColPtrs();
+	unsigned* ids = transpose->getRows();
+	
     unsigned* inversePermutation = new unsigned[m_N];
-
+    
     unsigned noWindows = (m_N + windowSize - 1) / windowSize;
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
-        std::vector<unsigned> rowMark(m_N, 0);
-        std::vector<unsigned> queue;
-        queue.reserve(windowSize);
+		// per window reset
+		bool* cmarkers = new bool[windowSize];
+		unsigned* rowPtrs = new unsigned[m_N];
+		//std::unordered_map<unsigned, unsigned> rowPtrs;
+
+		// per slice set reset
+		unsigned* intersectionCounts = new unsigned[windowSize];
+		unsigned jackardQueueSize = 0;
+		unsigned* jackardQueue = new unsigned[windowSize];
+
+		// per slice set increment
+		unsigned* rmarkers = new unsigned[m_N];
+		std::fill(rmarkers, rmarkers + m_N, 0);
         unsigned epoch = 1;
 
-        #pragma omp for schedule(static)
+        #pragma omp for schedule(dynamic)
         for (unsigned window = 0; window < noWindows; ++window)
         {
+			std::fill(cmarkers, cmarkers + windowSize, false);
+			//rowPtrs.clear();
+			std::fill(rowPtrs, rowPtrs + m_N, UNSIGNED_MAX);
+
             unsigned windowStart = window * windowSize;
             unsigned windowEnd = std::min(windowStart + windowSize, m_N);
             unsigned windowLength = windowEnd - windowStart;
 
-            queue.clear();
-            for (unsigned j = windowStart; j < windowEnd; ++j)
-            {
-                queue.emplace_back(j);
-            }
-
             unsigned noSliceSets = (windowLength + sliceSize - 1) / sliceSize;
             for (unsigned sliceSet = 0; sliceSet < noSliceSets; ++sliceSet)
             {
-				unsigned sliceStart = windowStart + sliceSet * sliceSize;
+				std::fill(intersectionCounts, intersectionCounts + windowSize, 0); // can it be avoided?
+				jackardQueueSize = 0;
+	      
+	      		unsigned sliceStart = windowStart + sliceSet * sliceSize;
                 unsigned sliceEnd = std::min(sliceStart + sliceSize, windowEnd);
 
                 ++epoch;
                 unsigned unionSize = 0;
 
-				unsigned bestQueueIdx = 0;
-				unsigned max = 0;
-				for (unsigned idx = 0; idx < queue.size(); ++idx)
+				auto selectSingleton = [&](unsigned& singleton) -> bool
 				{
-					unsigned deg = m_ColPtrs[queue[idx] + 1] - m_ColPtrs[queue[idx]];
-					if (deg > max)
+					singleton = UNSIGNED_MAX;
+					unsigned max = 0;
+					for (unsigned j = windowStart; j < windowEnd; ++j) // expensive loop
 					{
-						bestQueueIdx = idx;
-						max = deg;
+						if (cmarkers[j - windowStart] == false)
+						{
+							unsigned deg = m_ColPtrs[j + 1] - m_ColPtrs[j];
+							if (deg >= max)
+							{
+								singleton = j;
+								max = deg;
+							}
+						}
 					}
-				}
-				unsigned col = queue[bestQueueIdx];
-				queue[bestQueueIdx] = queue.back();
-				queue.pop_back();
-
-                for (unsigned nnz = m_ColPtrs[col]; nnz < m_ColPtrs[col + 1]; ++nnz)
+					return singleton != UNSIGNED_MAX;
+				};
+				unsigned singleton;
+				selectSingleton(singleton);
+				cmarkers[singleton - windowStart] = true;
+		
+                for (unsigned nnz = m_ColPtrs[singleton]; nnz < m_ColPtrs[singleton + 1]; ++nnz)
                 {
-                    unsigned r = m_Rows[nnz];
-					rowMark[r] = epoch;
+					unsigned r = m_Rows[nnz];
+					rmarkers[r] = epoch;
 					++unionSize;
+					if (rowPtrs[r] != UNSIGNED_MAX)
+					{
+						nowContainsSingleton:
+						for (unsigned p = rowPtrs[r]; p < ptrs[r + 1]; ++p)
+						{
+							unsigned c = ids[p];
+							if (c < windowEnd && cmarkers[c - windowStart] == false)
+							{
+								if (intersectionCounts[c - windowStart] == 0)
+								{
+									jackardQueue[jackardQueueSize++] = c;
+								}
+								intersectionCounts[c - windowStart]++;
+							}
+							if (c >= windowEnd)
+							{
+								break;
+							}
+						}
+					}
+					else
+					{
+						for (unsigned p = ptrs[r]; p < ptrs[r + 1]; ++p)
+						{
+							unsigned c = ids[p];
+							if (c >= windowStart)
+							{
+								rowPtrs[r] = p;
+								goto nowContainsSingleton;
+							}
+						}
+					}
                 }
-                inversePermutation[col] = sliceStart;
+                inversePermutation[singleton] = sliceStart;
 
                 for (unsigned newCol = sliceStart + 1; newCol < sliceEnd; ++newCol)
-                {
-                    if (queue.empty())
-                    {
-                        break;
-                    }
+		  		{
+					unsigned bestCol;
+					if (jackardQueueSize == 0)
+					{
+						if (selectSingleton(bestCol) == false)
+						{
+							break;
+						}
+					}
+					else
+					{
+						unsigned colIdx = UNSIGNED_MAX;
+						double bestJackard = -1;
+						for (unsigned jidx = 0; jidx < jackardQueueSize; ++jidx)
+						{
+							unsigned j = jackardQueue[jidx];
 
-                    double bestJackard = -1;
-                    unsigned bestListIdx = UNSIGNED_MAX;
-                    for (unsigned i = 0; i < queue.size(); ++i)
-                    {
-                        unsigned j = queue[i];
-                        unsigned inter = 0;
-                        for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
-                        {
-                            if (rowMark[m_Rows[nnz]] == epoch)
-                            {
-                                inter++;
-                            }
-                        }
-
-                        unsigned deg = (m_ColPtrs[j + 1] - m_ColPtrs[j]);
-                        unsigned uni = unionSize + deg - inter;
-                        double val = (uni == 0) ? 1.0 : static_cast<double>(inter) / uni;
-
-                        if (val > bestJackard)
-                        {
-                            bestJackard = val;
-                            bestListIdx = i;
-                        }
-                    }
-
-                    unsigned bestCol = queue[bestListIdx];
-                    queue[bestListIdx] = queue.back();
-                    queue.pop_back();
+							unsigned inter = intersectionCounts[j - windowStart];
+							unsigned deg = (m_ColPtrs[j + 1] - m_ColPtrs[j]);
+							unsigned uni = unionSize + deg - inter;
+							double val = (uni == 0) ? 1.0 : static_cast<double>(inter) / uni;
+				
+							if (val > bestJackard)
+							{
+								colIdx = jidx;
+								bestJackard = val;
+							}
+						}
+						bestCol = jackardQueue[colIdx];
+						jackardQueue[colIdx] = jackardQueue[jackardQueueSize - 1];
+						--jackardQueueSize;
+					}
+					cmarkers[bestCol - windowStart] = true;
 
                     for (unsigned nnz = m_ColPtrs[bestCol]; nnz < m_ColPtrs[bestCol + 1]; ++nnz)
-                    {
+		      		{
                         unsigned r = m_Rows[nnz];
-                        if (rowMark[r] != epoch)
-                        {
-                            rowMark[r] = epoch;
+                        if (rmarkers[r] != epoch)
+			  			{
+                            rmarkers[r] = epoch;
                             ++unionSize;
-                        }
-                    }
+							if (rowPtrs[r] != UNSIGNED_MAX)
+							{
+								nowContains:
+								for (unsigned p = rowPtrs[r]; p < ptrs[r + 1]; ++p)
+								{
+									unsigned c = ids[p];
+									if (c < windowEnd && cmarkers[c - windowStart] == false)
+									{
+										if (intersectionCounts[c - windowStart] == 0)
+										{
+											jackardQueue[jackardQueueSize++] = c;
+										}
+										intersectionCounts[c - windowStart]++;
+									}
+									if (c >= windowEnd)
+									{
+										break;
+									}
+								}
+							}
+							else
+							{
+								for (unsigned p = ptrs[r]; p < ptrs[r + 1]; ++p)
+								{
+									unsigned c = ids[p];
+									if (c >= windowStart)
+									{
+										rowPtrs[r] = p;
+										goto nowContains;
+									}
+								}
+							}
+			  			}
+		      		}
                     inversePermutation[bestCol] = newCol;
-                }
+				}
             }
         }
+		delete[] rmarkers;
+		delete[] intersectionCounts;
+		delete[] jackardQueue;
+		delete[] cmarkers;
+		delete[] rowPtrs;
     }
+	delete transpose;
 
-    applyPermutation(inversePermutation);
-    return inversePermutation;
+	applyPermutation(inversePermutation);
+	return inversePermutation;
 }
 
-unsigned* CSC::rcmWithJackard(unsigned sliceSize)
+unsigned* CSC::rcmWithJackard(unsigned sliceSize, unsigned windowSize)
 {
-	unsigned windowSize = 65536;
-
 	unsigned* rcmPermutation = this->rcm();
 	unsigned* jackardPermutation = this->jackardWithWindow(sliceSize, windowSize);
 
@@ -751,10 +883,8 @@ unsigned* CSC::rcmWithJackard(unsigned sliceSize)
 	return chained;
 }
 
-unsigned* CSC::gorderWithJackard(unsigned sliceSize)
+unsigned* CSC::gorderWithJackard(unsigned sliceSize, unsigned windowSize)
 {
-	unsigned windowSize = sliceSize * 8192;
-
 	Gorder::Graph g;
 	g.setFilename("gorder");
 	g.readGraph(m_N, m_NNZ, m_ColPtrs, m_Rows);

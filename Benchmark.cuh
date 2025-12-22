@@ -8,7 +8,16 @@
 #include <unordered_set>
 #include <random>
 
-#define MATRIX_DIRECTORY "YOUR_MATRIX_DIRECTORY/"
+struct Config
+{
+    Config(std::string directory, std::string matrixName, bool jackardEnabled, unsigned windowSize)
+    : directory(directory), matrixName(matrixName), jackardEnabled(jackardEnabled), windowSize(windowSize) {}
+
+    std::string directory;
+    std::string matrixName;
+    bool jackardEnabled;
+    unsigned windowSize;
+};
 
 struct Matrix
 {
@@ -33,7 +42,7 @@ public:
     Benchmark& operator=(const Benchmark& other) = delete;
     Benchmark& operator=(Benchmark&& other) noexcept = delete;
     
-    void main();
+    void main(const Config& config);
     double run(const Matrix& matrix);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
     void generateSourceVertices(std::string filename, unsigned n, unsigned k);
@@ -84,31 +93,19 @@ void Benchmark::generateSourceVertices(std::string filename, unsigned n, unsigne
     file.close();
 }
 
-void Benchmark::main()
+void Benchmark::main(const Config& config)
 {
     SuiteSparseDownloader downloader;
     SuiteSparseDownloader::MatrixFilter filter;
 
-    /* FULL EXPERIMENT SET */
     filter.names = {
-        "GAP-road",
-        "GAP-twitter",
-        "GAP-web",
-        "GAP-kron",
-        "GAP-urand",
-        "webbase-2001",
-        "uk-2005",
-        "europe_osm",
-        "it-2004",
-        "kmer_V1r",
-        "com-Friendster",
-        "mawi_201512020330",
-        "Spielman_k600",
-        "nlpkkt240"
+        config.matrixName
     };
+    JACKARD_ON = config.jackardEnabled;
+    WINDOW_SIZE = config.windowSize;
 
     std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
-    downloader.downloadMatrices(MATRIX_DIRECTORY, matrices);
+    downloader.downloadMatrices(config.directory, matrices);
 
     for (const auto& matrix: matrices)
     {
@@ -133,7 +130,7 @@ void Benchmark::main()
             << "installationPath: " << matrix.installationPath << '\n'
             << "----------------------------------------" << std::endl;
 
-        Matrix currentMatrix(matrix.installationPath, MATRIX_DIRECTORY + matrix.name + ".txt", matrix.numericSymmetry, matrix.isBinary);
+        Matrix currentMatrix(matrix.installationPath, config.directory + matrix.name + ".txt", matrix.numericSymmetry, matrix.isBinary);
         double time = run(currentMatrix);
         std::cout << "Time: " << time << " ms." << std::endl;
         std::cout << "******************************" << std::endl;
