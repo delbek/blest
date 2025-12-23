@@ -64,6 +64,7 @@ private:
 	unsigned* degreeSort(bool ascending = true);
 	unsigned findPseudoPeripheralNode(CSC* csc, unsigned startNode);
 	unsigned* rcm();
+	unsigned* soloVertexPermutation();
 	
 	void applyPermutation(unsigned* inversePermutation);
 	bool permutationCheck(unsigned* inversePermutation);
@@ -343,16 +344,19 @@ unsigned* CSC::reorder(unsigned sliceSize)
 	unsigned* inversePermutation = nullptr;
 	if (this->isSocialNetwork())
 	{
+		unsigned* soloPerm = this->soloVertexPermutation(); 
+		unsigned* innerPerm;
 		if (JACKARD_ON)
 		{
 			std::cout << "Reordering with JaccardWithWindows" << std::endl;
-			inversePermutation = this->jackardWithWindow(sliceSize, WINDOW_SIZE);
+			innerPerm = this->jackardWithWindow(sliceSize, WINDOW_SIZE);
 		}
 		else
 		{
 			std::cout << "Natural Ordering" << std::endl;
-			inversePermutation = this->natural();
+			innerPerm = this->natural();
 		}
+		inversePermutation = chainPermutations(m_N, soloPerm, innerPerm);
 	}
 	else
 	{
@@ -362,6 +366,28 @@ unsigned* CSC::reorder(unsigned sliceSize)
 	double end = omp_get_wtime();
 	std::cout << "Time took to reorder: " << end - start << std::endl;
 	return inversePermutation;
+}
+
+unsigned* CSC::soloVertexPermutation()
+{
+	unsigned* m_InversePermutation = new unsigned[m_N];
+
+	unsigned forwardCounter = 0;
+	unsigned backwardCounter = m_N - 1;
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		if ((m_ColPtrs[j + 1] - m_ColPtrs[j]) == 0)
+		{
+			m_InversePermutation[j] = backwardCounter--;
+		}
+		else
+		{
+			m_InversePermutation[j] = forwardCounter++;
+		}
+	}
+
+	applyPermutation(m_InversePermutation);
+	return m_InversePermutation;
 }
 
 bool CSC::checkSymmetry()

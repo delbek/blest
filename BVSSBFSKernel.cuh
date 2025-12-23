@@ -14,23 +14,23 @@ namespace BVSSBFSKernels
         ptr1 = temp;
     }
 
-    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4SocialFullPad(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4LazyFullPad   (
                                                                     const SLICE_TYPE* const __restrict__ sliceSetPtrs,
-                                                                    const unsigned* const __restrict__ virtualToReal,
-                                                                    const unsigned* const __restrict__ realPtrs,
-                                                                    const unsigned* const __restrict__ rowIds,
-                                                                    const MASK*     const __restrict__ masks,
-                                                                    const unsigned* const __restrict__ noWordsPtr,
+                                                                    const unsigned*   const __restrict__ virtualToReal,
+                                                                    const unsigned*   const __restrict__ realPtrs,
+                                                                    const unsigned*   const __restrict__ rowIds,
+                                                                    const MASK*       const __restrict__ masks,
+                                                                    const unsigned*   const __restrict__ noWordsPtr,
                                                                     // current
-                                                                    unsigned*       const __restrict__ levels,
-                                                                    unsigned*       const __restrict__ frontier,
-                                                                    unsigned*       const __restrict__ visited,
-                                                                    unsigned*             __restrict__ sparseFrontierIds,
-                                                                    unsigned*             __restrict__ frontierCurrentSizePtr,
+                                                                    unsigned*         const __restrict__ levels,
+                                                                    unsigned*         const __restrict__ frontier,
+                                                                    unsigned*         const __restrict__ visited,
+                                                                    unsigned*               __restrict__ sparseFrontierIds,
+                                                                    unsigned*               __restrict__ frontierCurrentSizePtr,
                                                                     // next
-                                                                    unsigned*       const __restrict__ visitedNext,
-                                                                    unsigned*             __restrict__ sparseFrontierNextIds,
-                                                                    unsigned*             __restrict__ frontierNextSizePtr
+                                                                    unsigned*         const __restrict__ visitedNext,
+                                                                    unsigned*               __restrict__ sparseFrontierNextIds,
+                                                                    unsigned*               __restrict__ frontierNextSizePtr
                                                                     )
     {
         auto grid = this_grid();
@@ -176,23 +176,23 @@ namespace BVSSBFSKernels
         }
     }
 
-    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Social(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Lazy  (
                                                             const SLICE_TYPE* const __restrict__ sliceSetPtrs,
-                                                            const unsigned* const __restrict__ virtualToReal,
-                                                            const unsigned* const __restrict__ realPtrs,
-                                                            const unsigned* const __restrict__ rowIds,
-                                                            const MASK*     const __restrict__ masks,
-                                                            const unsigned* const __restrict__ noWordsPtr,
+                                                            const unsigned*   const __restrict__ virtualToReal,
+                                                            const unsigned*   const __restrict__ realPtrs,
+                                                            const unsigned*   const __restrict__ rowIds,
+                                                            const MASK*       const __restrict__ masks,
+                                                            const unsigned*   const __restrict__ noWordsPtr,
                                                             // current
-                                                            unsigned*       const __restrict__ levels,
-                                                            unsigned*       const __restrict__ frontier,
-                                                            unsigned*       const __restrict__ visited,
-                                                            unsigned*             __restrict__ sparseFrontierIds,
-                                                            unsigned*             __restrict__ frontierCurrentSizePtr,
+                                                            unsigned*         const __restrict__ levels,
+                                                            unsigned*         const __restrict__ frontier,
+                                                            unsigned*         const __restrict__ visited,
+                                                            unsigned*               __restrict__ sparseFrontierIds,
+                                                            unsigned*               __restrict__ frontierCurrentSizePtr,
                                                             // next
-                                                            unsigned*       const __restrict__ visitedNext,
-                                                            unsigned*             __restrict__ sparseFrontierNextIds,
-                                                            unsigned*             __restrict__ frontierNextSizePtr
+                                                            unsigned*         const __restrict__ visitedNext,
+                                                            unsigned*               __restrict__ sparseFrontierNextIds,
+                                                            unsigned*               __restrict__ frontierNextSizePtr
                                                             )
     {
         auto grid = this_grid();
@@ -346,22 +346,22 @@ namespace BVSSBFSKernels
         }
     }
 
-    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4RoadFullPad(
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4FullPad   (
                                                                 const SLICE_TYPE* const __restrict__ sliceSetPtrs,
-                                                                const unsigned* const __restrict__ virtualToReal,
-                                                                const unsigned* const __restrict__ realPtrs,
-                                                                const unsigned* const __restrict__ rowIds,
-                                                                const MASK*     const __restrict__ masks,
-                                                                const unsigned* const __restrict__ noWordsPtr,
+                                                                const unsigned*   const __restrict__ virtualToReal,
+                                                                const unsigned*   const __restrict__ realPtrs,
+                                                                const unsigned*   const __restrict__ rowIds,
+                                                                const MASK*       const __restrict__ masks,
+                                                                const unsigned*   const __restrict__ noWordsPtr,
                                                                 // current
-                                                                unsigned*       const __restrict__ levels,
-                                                                unsigned*             __restrict__ frontier,
-                                                                unsigned*             __restrict__ sparseFrontierIds,
-                                                                unsigned*             __restrict__ frontierCurrentSizePtr,
+                                                                unsigned*         const __restrict__ levels,
+                                                                unsigned*               __restrict__ frontier,
+                                                                unsigned*               __restrict__ sparseFrontierIds,
+                                                                unsigned*               __restrict__ frontierCurrentSizePtr,
                                                                 // next
-                                                                unsigned*             __restrict__ frontierNext,
-                                                                unsigned*             __restrict__ sparseFrontierNextIds,
-                                                                unsigned*             __restrict__ frontierNextSizePtr
+                                                                unsigned*               __restrict__ frontierNext,
+                                                                unsigned*               __restrict__ sparseFrontierNextIds,
+                                                                unsigned*               __restrict__ frontierNextSizePtr
                                                                 )
     {
         auto grid = this_grid();
@@ -542,23 +542,23 @@ namespace BVSSBFSKernels
         }
     }
 
-    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4Road(
-                                                            const SLICE_TYPE* const __restrict__ sliceSetPtrs,
-                                                            const unsigned* const __restrict__ virtualToReal,
-                                                            const unsigned* const __restrict__ realPtrs,
-                                                            const unsigned* const __restrict__ rowIds,
-                                                            const MASK*     const __restrict__ masks,
-                                                            const unsigned* const __restrict__ noWordsPtr,
-                                                            // current
-                                                            unsigned*       const __restrict__ levels,
-                                                            unsigned*             __restrict__ frontier,
-                                                            unsigned*             __restrict__ sparseFrontierIds,
-                                                            unsigned*             __restrict__ frontierCurrentSizePtr,
-                                                            // next
-                                                            unsigned*             __restrict__ frontierNext,
-                                                            unsigned*             __restrict__ sparseFrontierNextIds,
-                                                            unsigned*             __restrict__ frontierNextSizePtr
-                                                            )
+    __global__ void BVSSBFS8EnhancedSliceSize8NoMasks4  (
+                                                        const SLICE_TYPE* const __restrict__ sliceSetPtrs,
+                                                        const unsigned*   const __restrict__ virtualToReal,
+                                                        const unsigned*   const __restrict__ realPtrs,
+                                                        const unsigned*   const __restrict__ rowIds,
+                                                        const MASK*       const __restrict__ masks,
+                                                        const unsigned*   const __restrict__ noWordsPtr,
+                                                        // current
+                                                        unsigned*         const __restrict__ levels,
+                                                        unsigned*               __restrict__ frontier,
+                                                        unsigned*               __restrict__ sparseFrontierIds,
+                                                        unsigned*               __restrict__ frontierCurrentSizePtr,
+                                                        // next
+                                                        unsigned*               __restrict__ frontierNext,
+                                                        unsigned*               __restrict__ sparseFrontierNextIds,
+                                                        unsigned*               __restrict__ frontierNextSizePtr
+                                                        )
     {
         auto grid = this_grid();
         const unsigned threadID = blockIdx.x * blockDim.x + threadIdx.x;
@@ -781,7 +781,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     unsigned* realPtrs = bvss->getRealPtrs();
     unsigned* rowIds = bvss->getRowIds();
     MASK* masks = bvss->getMasks();
-    const unsigned DIRECTION_THRESHOLD = noSliceSets * DIRECTION_SWITCHING_CONSTANT; // vset- or rset- based?
 
     BFSResult result;
     result.sourceVertex = sourceVertex;
@@ -801,22 +800,22 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
         {
             if (FULL_PADDING)
             {
-                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4SocialFullPad;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazyFullPad;
             }
             else
             {
-                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Social;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Lazy;
             }
         }
         else
         {
             if (FULL_PADDING)
             {
-                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4RoadFullPad;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4FullPad;
             }
             else
             {
-                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Road;
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4;
             }
         }
     }
@@ -846,7 +845,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     MASK* d_Masks;
 
     unsigned* d_NoWords;
-    unsigned* d_DIRECTION_THRESHOLD;
     unsigned* d_Frontier;
     unsigned* d_SparseFrontierIds;
     unsigned* d_FrontierCurrentSize;
@@ -875,7 +873,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     // algorithm
     unsigned noWords = (n + 31) / 32;
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_DIRECTION_THRESHOLD, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
@@ -893,7 +890,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
 
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_DIRECTION_THRESHOLD, &DIRECTION_THRESHOLD, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
 
     std::vector<unsigned> initialVset;
@@ -995,7 +991,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     gpuErrchk(cudaFree(d_RowIds))
     gpuErrchk(cudaFree(d_Masks))
     gpuErrchk(cudaFree(d_NoWords))
-    gpuErrchk(cudaFree(d_DIRECTION_THRESHOLD))
     gpuErrchk(cudaFree(d_Frontier))
     gpuErrchk(cudaFree(d_SparseFrontierIds))
     gpuErrchk(cudaFree(d_FrontierCurrentSize))

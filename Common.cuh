@@ -18,7 +18,6 @@ static unsigned WINDOW_SIZE;
 static bool FULL_PADDING;
 #define LAZY_KERNEL_THRESHOLD 25000
 #define SOCIAL_THRESHOLD 18
-#define DIRECTION_SWITCHING_CONSTANT 1
 #define SLICE_TYPE unsigned long long
 
 #define K 128

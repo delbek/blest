@@ -108,7 +108,7 @@ int main(int argc, char** argv)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Error: " << e.what() << std::endl << std::endl;
+        std::cerr << "Error: " << e.what() << std::endl;
         print_usage(argv[0]);
         return 1;
     }
