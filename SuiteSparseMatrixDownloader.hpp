@@ -13,7 +13,7 @@
 #include <cstdio>
 #include <iostream>
 #include "omp.h"
-#include <unistd.h>
+#include <unordered_set>
 
 class SuiteSparseDownloader
 {
@@ -91,12 +91,15 @@ public:
 		std::vector<MatrixInfo> out;
 		out.reserve(matrices.size());
 
+		std::unordered_set<std::string> hash;
+
 		for (const auto& m: matrices)
 		{
-			if (!matchesFilter(m, filter))
+			if ((matchesFilter(m, filter) == false) || (hash.find(m.name) != hash.end()))
 			{
 				continue;
 			}
+			hash.insert(m.name);
 			out.emplace_back(m);
 			out.back().downloadLink = buildDownloadLink(out.back());
 		}

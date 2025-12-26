@@ -6,7 +6,6 @@
 #include <filesystem>
 #include "SuiteSparseMatrixDownloader.hpp"
 #include <unordered_set>
-#include <random>
 
 struct Config
 {
@@ -72,13 +71,6 @@ void Benchmark::generateSourceVertices(std::string filename, unsigned n, unsigne
 {
     std::ofstream file(filename);
     std::unordered_set<unsigned> set;
-
-    auto rand = [](unsigned min, unsigned max)
-    {
-        static thread_local std::mt19937 gen(std::random_device{}());
-        std::uniform_int_distribution<unsigned> dist(min, max);
-        return dist(gen);
-    };
 
     for (unsigned i = 0; i < k; ++i)
     {

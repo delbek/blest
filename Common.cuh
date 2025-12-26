@@ -6,6 +6,7 @@
 #include <fstream>
 #include <type_traits>
 #include <vector>
+#include <random>
 #include <algorithm>
 #include <cmath>
 #include <cuda_runtime.h>
@@ -63,6 +64,13 @@ static unsigned* chainPermutations(unsigned n, unsigned* perm1, unsigned* perm2)
     delete[] perm1;
     delete[] perm2;
     return chained;
+}
+
+unsigned rand(unsigned min, unsigned max)
+{
+    static thread_local std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<unsigned> dist(min, max);
+    return dist(gen);
 }
 
 static bool isSocialDegreeDistribution(const std::vector<unsigned> &deg)
