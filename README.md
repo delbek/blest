@@ -49,9 +49,9 @@ Deniz Elbek and Kamer Kaya. BLEST: Blazingly Efficient BFS using Tensor Cores (2
 
    2. -g: Graph name (e.g, GAP-twitter)
 
-   3. -j: Jaccard enabled (0 or 1) -- WE RECOMMEND THIS TO BE SET TO 1
+   3. -j: Jaccard enabled (0 or 1) -- We recommend this to be set to 1
 
-   4. -w: Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET AT LEAST TO 65536
+   4. -w: Window size (an unsigned integer) -- We recommend this to be set at least to 65536
 
    Note: You do not need to download graphs as the library will download it for you if it finds in SuiteSparse.
 

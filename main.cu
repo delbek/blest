@@ -23,8 +23,8 @@ static void print_usage(const char* prog)
         << " -d <directory> -g <graph_name> -j <0|1> -w <window_size>\n"
         << "  -d \t Absolute directory path under which your BFS source files are located and to which BLEST will dump results and intermediate files (e.g, /home/blest/intermediate/)\n"
         << "  -g \t Graph name (e.g, GAP-twitter)\n"
-        << "  -j \t Jaccard enabled (0 or 1) -- WE RECOMMEND THIS TO BE SET TO 1\n"
-        << "  -w \t Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET AT LEAST TO 65536\n";
+        << "  -j \t Jaccard enabled (0 or 1) -- We recommend this to be set to 1\n"
+        << "  -w \t Window size (an unsigned integer) -- We recommend this to be set at least to 65536\n";
 }
 
 static Config parse_args(int argc, char** argv)
