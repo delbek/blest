@@ -1,5 +1,29 @@
 # BLEST: Blazingly Efficient BFS using Tensor Cores
 
+BLEST is a state-of-the-art library to execute Breadth First Search (BFS) on modern GPUs. Its novel data structure, combined with unprecedented compute mechanics, delivers immense performance across massive real-world graphs on massively parallel processors, making it one of the most competitive BFS frameworks ever proposed to date.
+
+If you use this library in your research, please cite:
+<br/><br/>
+Deniz Elbek and Kamer Kaya. BLEST: Blazingly Efficient BFS using Tensor Cores (2025). arXiv:2512.21967. URL https://www.arxiv.org/abs/2512.21967
+
+---
+
+### Hard Requirements
+
+| **Requirement** | **Minimum Version** |
+| --------------- |---------------------|
+| C++             | `20`                |
+| G++             | `12.3.0`            |
+| CMake           | `3.18`              |
+| CUDA            | `13.0`              |
+| GPU Compute Cap.| `80`                |
+| libcurl         |  -                  |
+| Linux OS        |  -                  |
+
+---
+
+## Step-by-Step Guide
+
 1. In `CMakeLists.txt`, set the target GPU architecture to match your hardware, e.g.
    ```cmake
    set(CMAKE_CUDA_ARCHITECTURES 90)
@@ -27,7 +51,7 @@
 
    3. -j: Jaccard enabled (0 or 1) -- WE RECOMMEND THIS TO BE SET TO 1
 
-   4. -w: Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET TO 65536
+   4. -w: Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET AT LEAST TO 65536
 
    Note: You do not need to download graphs as the library will download it for you if it finds in SuiteSparse.
 

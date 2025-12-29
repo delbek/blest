@@ -1,3 +1,19 @@
+/*
+ * This file is part of the BLEST repository: https://github.com/delbek/blest
+ * Author: Deniz Elbek
+ *
+ * Please see the paper:
+ * 
+ * @article{Elbek2025BLEST,
+ *   title   = {BLEST: Blazingly Efficient BFS using Tensor Cores},
+ *   author  = {Elbek, Deniz and Kaya, Kamer},
+ *   journal = {arXiv preprint arXiv:2512.21967},
+ *   year    = {2025},
+ *   doi     = {10.48550/arXiv.2512.21967},
+ *   url     = {https://www.arxiv.org/abs/2512.21967}
+ * }
+ */
+
 #include "Benchmark.cuh"
 
 static void print_usage(const char* prog)
@@ -8,7 +24,7 @@ static void print_usage(const char* prog)
         << "  -d \t Absolute directory path under which your BFS source files are located and to which BLEST will dump results and intermediate files (e.g, /home/blest/intermediate/)\n"
         << "  -g \t Graph name (e.g, GAP-twitter)\n"
         << "  -j \t Jaccard enabled (0 or 1) -- WE RECOMMEND THIS TO BE SET TO 1\n"
-        << "  -w \t Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET TO 65536\n";
+        << "  -w \t Window size (an unsigned integer) -- WE RECOMMEND THIS TO BE SET AT LEAST TO 65536\n";
 }
 
 static Config parse_args(int argc, char** argv)
