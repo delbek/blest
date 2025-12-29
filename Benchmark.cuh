@@ -244,7 +244,7 @@ double Benchmark::run(const Matrix& matrix)
         {
             BFSResult result = kernel->runBFS(source);
             result.sourceVertex = permutation[result.sourceVertex];
-            std::cout << "Source: " << result.sourceVertex << " - Time took: " << result.time * 1000 << " ms." << std::endl;
+            std::cout << "Source: " << result.sourceVertex << " - Number of levels processed: " << result.totalLevels << " - Total visited: " << result.noVisited << " - Time took: " << result.time * 1000 << " ms." << std::endl;
             if (i >= nIgnore)
             {
                 results.emplace_back(result);

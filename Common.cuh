@@ -64,6 +64,13 @@ __device__ __forceinline__ void m8n8k128(unsigned* const __restrict__ fragC, con
                  : "r"(fragA), "r"(fragB), "r"(fragC[0]), "r"(fragC[1]));
 }
 
+__device__ __forceinline__ unsigned long long getTime()
+{
+    unsigned long long t;
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t) :: "memory");
+    return t;
+}
+
 template <class T>
 static void fileFlush(std::ofstream& file, T el)
 {

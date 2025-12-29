@@ -999,6 +999,7 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
             ++result.noVisited;
         }
     }
+    ++result.totalLevels;
 
     gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))

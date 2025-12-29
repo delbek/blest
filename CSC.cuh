@@ -67,7 +67,6 @@ public:
 	bool checkSymmetry();
 	CSC* symmetrize();
 	CSC* transpose();
-	std::vector<bool> bfsSwitchPolicy();
 
 private:
 	bool socialNetworkHelper();
@@ -549,88 +548,6 @@ unsigned* CSC::random()
 	applyPermutation(inversePermutation);
 
 	return inversePermutation;
-}
-
-std::vector<bool> CSC::bfsSwitchPolicy()
-{
-	constexpr unsigned NO_TRIAL = 20;
-	const unsigned lazyLimit = m_N / 32 / 6;
-	std::unordered_set<unsigned> selecteds;
-	
-	std::vector<unsigned> votes;
-	for (unsigned i = 0; i < NO_TRIAL; ++i)
-	{
-		unsigned source;
-		do
-		{
-			source = rand(0, m_N - 1);
-		} while (selecteds.contains(source));
-		selecteds.insert(source);
-
-		std::vector<unsigned> frontierDistribution;
-		frontierDistribution.reserve(m_N);
-		unsigned currentFrontierSize = 0;
-
-		bool* visited = new bool[m_N];
-		unsigned* queue = new unsigned[m_N];
-		unsigned qs = 0;
-		unsigned qe = 0;
-		queue[qe++] = source;
-		visited[source] = true;
-		unsigned levelEnd = qe;
-
-		while (qs < qe)
-		{
-			unsigned u = queue[qs++];
-			++currentFrontierSize;
-			for (unsigned ptr = m_ColPtrs[u]; ptr < m_ColPtrs[u + 1]; ++ptr)
-			{
-				unsigned v = m_Rows[ptr];
-				if (visited[v] == false)
-				{
-					visited[v] = true;
-					queue[qe++] = v;
-				}
-			}
-			if (qs == levelEnd)
-			{
-				frontierDistribution.emplace_back(currentFrontierSize);
-				currentFrontierSize = 0;
-				levelEnd = qe;
-			}
-		}
-		delete[] visited;
-		delete[] queue;
-
-		if (votes.size() < frontierDistribution.size())
-		{
-			for (unsigned l = votes.size(); l < frontierDistribution.size(); ++l)
-			{
-				votes.emplace_back(0);
-			}
-		}
-		for (unsigned l = 0; l < frontierDistribution.size(); ++l)
-		{
-			if (frontierDistribution[l] >= lazyLimit)
-			{
-				++votes[l];
-			}
-		}
-	}
-
-	std::vector<bool> results;
-	for (const auto& v: votes)
-	{
-		if (v >= (NO_TRIAL / 4))
-		{
-			results.emplace_back(true);
-		}
-		else
-		{
-			results.emplace_back(false);
-		}
-	}
-	return results;
 }
 
 unsigned* CSC::jackard(unsigned sliceSize)

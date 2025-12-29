@@ -30,6 +30,7 @@
 #include <iostream>
 #include "omp.h"
 #include <unordered_set>
+#include <unistd.h>
 
 class SuiteSparseDownloader
 {
@@ -173,7 +174,7 @@ public:
 				#ifdef _OPENMP
 				tid = static_cast<unsigned>(omp_get_thread_num());
 				#endif
-				unsigned long long pid = static_cast<unsigned long long>(::getpid());
+				unsigned long long pid = static_cast<unsigned long long>(getpid());
 				std::filesystem::path tarPath = folderPath / (baseName + "." + std::to_string(pid) + "." + std::to_string(tid) + ".tar.gz");
 				std::filesystem::path extractDir = folderPath / (baseName + "." + std::to_string(pid) + "." + std::to_string(tid) + ".d");
 
