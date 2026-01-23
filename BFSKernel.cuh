@@ -38,7 +38,7 @@ public:
     virtual ~BFSKernel() = default;
 
     virtual BFSResult hostCode(unsigned sourceVertex) = 0;
-    BFSResult runBFS(unsigned sourceVertex);
+    BFSResult run(unsigned sourceVertex);
 
 protected:
     BitMatrix* matrix;
@@ -50,7 +50,7 @@ BFSKernel::BFSKernel(BitMatrix* matrix)
 
 }
 
-BFSResult BFSKernel::runBFS(unsigned sourceVertex)
+BFSResult BFSKernel::run(unsigned sourceVertex)
 {
     return hostCode(sourceVertex);
 }

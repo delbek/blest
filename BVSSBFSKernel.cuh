@@ -153,7 +153,7 @@ namespace BVSSBFSKernels
                             unsigned rss = rssOffset + set;
                             while (sliceMask)
                             {
-                                unsigned vertex = (rss << 3) + ((__ffs(sliceMask) - 1) & 7);
+                                unsigned vertex = (rss << 3) + (__ffs(sliceMask) - 1);
                                 levels[vertex] = levelCount;
                                 sliceMask &= sliceMask - 1;
                             }
@@ -323,7 +323,7 @@ namespace BVSSBFSKernels
                             unsigned rss = rssOffset + set;
                             while (sliceMask)
                             {
-                                unsigned vertex = (rss << 3) + ((__ffs(sliceMask) - 1) & 7);
+                                unsigned vertex = (rss << 3) + (__ffs(sliceMask) - 1);
                                 levels[vertex] = levelCount;
                                 sliceMask &= sliceMask - 1;
                             }
