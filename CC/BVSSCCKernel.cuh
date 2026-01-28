@@ -105,7 +105,7 @@ namespace BVSSCCKernels
 
                 unsigned word = rows.x >> 5;
                 unsigned bit = rows.x & 31;
-                unsigned temp = (1 << bit);
+                unsigned temp = (1u << bit);
                 if (fragC[0])
                 {
                     unsigned char validVertices = (mask & 0xFF) & origFragB;
@@ -134,7 +134,7 @@ namespace BVSSCCKernels
 
                 word = rows.y >> 5;
                 bit = rows.y & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[1])
                 {
                     unsigned char validVertices = ((mask >> 8) & 0xFF) & origFragB;
@@ -163,7 +163,7 @@ namespace BVSSCCKernels
 
                 word = rows.z >> 5;
                 bit = rows.z & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[2])
                 {
                     unsigned char validVertices = ((mask >> 16) & 0xFF) & origFragB;
@@ -192,7 +192,7 @@ namespace BVSSCCKernels
 
                 word = rows.w >> 5;
                 bit = rows.w & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[3])
                 {
                     unsigned char validVertices = ((mask >> 24) & 0xFF) & origFragB;
@@ -342,7 +342,7 @@ namespace BVSSCCKernels
 
                 unsigned word = rows.x >> 5;
                 unsigned bit = rows.x & 31;
-                unsigned temp = (1 << bit);
+                unsigned temp = (1u << bit);
                 if (fragC[0])
                 {
                     unsigned char validVertices = (mask & 0xFF) & origFragB;
@@ -371,7 +371,7 @@ namespace BVSSCCKernels
 
                 word = rows.y >> 5;
                 bit = rows.y & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[1])
                 {
                     unsigned char validVertices = ((mask >> 8) & 0xFF) & origFragB;
@@ -400,7 +400,7 @@ namespace BVSSCCKernels
 
                 word = rows.z >> 5;
                 bit = rows.z & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[2])
                 {
                     unsigned char validVertices = ((mask >> 16) & 0xFF) & origFragB;
@@ -429,7 +429,7 @@ namespace BVSSCCKernels
 
                 word = rows.w >> 5;
                 bit = rows.w & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[3])
                 {
                     unsigned char validVertices = ((mask >> 24) & 0xFF) & origFragB;
@@ -587,7 +587,7 @@ namespace BVSSCCKernels
 
                 unsigned word = rows.x >> 5;
                 unsigned bit = rows.x & 31;
-                unsigned temp = (1 << bit);
+                unsigned temp = (1u << bit);
                 if (fragC[0])
                 {
                     unsigned char validVertices = (mask & 0xFF) & origFragB;
@@ -631,7 +631,7 @@ namespace BVSSCCKernels
 
                 word = rows.y >> 5;
                 bit = rows.y & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[1])
                 {
                     unsigned char validVertices = ((mask >> 8) & 0xFF) & origFragB;
@@ -675,7 +675,7 @@ namespace BVSSCCKernels
 
                 word = rows.z >> 5;
                 bit = rows.z & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[2])
                 {
                     unsigned char validVertices = ((mask >> 16) & 0xFF) & origFragB;
@@ -719,7 +719,7 @@ namespace BVSSCCKernels
 
                 word = rows.w >> 5;
                 bit = rows.w & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[3])
                 {
                     unsigned char validVertices = ((mask >> 24) & 0xFF) & origFragB;
@@ -849,7 +849,7 @@ namespace BVSSCCKernels
 
                 unsigned word = rows.x >> 5;
                 unsigned bit = rows.x & 31;
-                unsigned temp = (1 << bit);
+                unsigned temp = (1u << bit);
                 if (fragC[0])
                 {
                     unsigned char validVertices = (mask & 0xFF) & origFragB;
@@ -893,7 +893,7 @@ namespace BVSSCCKernels
 
                 word = rows.y >> 5;
                 bit = rows.y & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[1])
                 {
                     unsigned char validVertices = ((mask >> 8) & 0xFF) & origFragB;
@@ -937,7 +937,7 @@ namespace BVSSCCKernels
 
                 word = rows.z >> 5;
                 bit = rows.z & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[2])
                 {
                     unsigned char validVertices = ((mask >> 16) & 0xFF) & origFragB;
@@ -981,7 +981,7 @@ namespace BVSSCCKernels
 
                 word = rows.w >> 5;
                 bit = rows.w & 31;
-                temp = (1 << bit);
+                temp = (1u << bit);
                 if (fragC[3])
                 {
                     unsigned char validVertices = ((mask >> 24) & 0xFF) & origFragB;
@@ -1183,7 +1183,7 @@ CCResult BVSSCCKernel::hostCode()
     gpuErrchk(cudaMemset(d_Frontier, 0xFF, sizeof(unsigned) * noWords))
     if (n & 31)
     {
-        unsigned last = (1 << (n & 31)) - 1;
+        unsigned last = (1u << (n & 31)) - 1;
         cudaMemcpy(d_Frontier + (noWords - 1), &last, sizeof(unsigned), cudaMemcpyHostToDevice);
     }
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))

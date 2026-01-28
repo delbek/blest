@@ -1466,13 +1466,10 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
     }
     else
     {
-        if (FULL_PADDING) // NO SWITCHING
+        if (FULL_PADDING)
         {
-            std::array<void*, 17> args =
+            std::array<void*, 14> args =
             {
-                (void*)&d_RowPtrs,
-                (void*)&d_ColIds,
-                (void*)&d_N,
                 (void*)&d_SliceSetPtrs,
                 (void*)&d_VirtualToReal,
                 (void*)&d_RealPtrs,
@@ -1499,7 +1496,7 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
                 allocateSharedMemory(blockSize),
                 0))
         }
-        else // SWITCHING
+        else
         {
             std::array<void*, 19> args =
             {

@@ -23,6 +23,10 @@ endif()
 find_package(CURL REQUIRED)
 
 include_directories(.)
+include_directories(DataStructures)
+include_directories(BFS)
+include_directories(CC)
+include_directories(MBFS)
 include_directories(Gorder)
 
 add_executable(blest
