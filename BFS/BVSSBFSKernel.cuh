@@ -87,6 +87,12 @@ namespace BVSSBFSKernels
             ++levelCount;
             unsigned currentUnvisitedSize = *unvisitedCurrentSizePtr;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            /*
+            if (threadID == 0)
+            {
+                printf("Current unvisited: %u - Current frontier: %u - Ratio: %f\n", currentUnvisitedSize, currentFrontierSize, double(currentUnvisitedSize) / currentFrontierSize);
+            }
+            */
             if (currentUnvisitedSize < currentFrontierSize * SWITCHING_CONSTANT)
             {
                 for (unsigned i = warpID; i < noWords; i += noWarps)
@@ -334,6 +340,12 @@ namespace BVSSBFSKernels
             ++levelCount;
             unsigned currentUnvisitedSize = *unvisitedCurrentSizePtr;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
+            /*
+            if (threadID == 0)
+            {
+                printf("Current unvisited: %u - Current frontier: %u - Ratio: %f\n", currentUnvisitedSize, currentFrontierSize, double(currentUnvisitedSize) / currentFrontierSize);
+            }
+            */
             if (currentUnvisitedSize < currentFrontierSize * SWITCHING_CONSTANT)
             {
                 for (unsigned i = warpID; i < noWords; i += noWarps)
@@ -1452,7 +1464,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
             (void*)&d_FrontierNext,
             (void*)&d_SparseFrontierNextIds,
             (void*)&d_FrontierNextSize
-            //(void*)&d_LevelTimes
         };
 
         start = omp_get_wtime();
@@ -1484,7 +1495,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
                 (void*)&d_VisitedNext,
                 (void*)&d_SparseFrontierNextIds,
                 (void*)&d_FrontierNextSize
-                //(void*)&d_LevelTimes
             };
 
             start = omp_get_wtime();
@@ -1519,7 +1529,6 @@ BFSResult BVSSBFSKernel::hostCode(unsigned sourceVertex)
                 (void*)&d_SparseFrontierNextIds,
                 (void*)&d_UnvisitedNextSize,
                 (void*)&d_FrontierNextSize
-                //(void*)&d_LevelTimes
             };
 
             start = omp_get_wtime();
