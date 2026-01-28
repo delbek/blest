@@ -154,8 +154,9 @@ double Benchmark::run(const Matrix& matrix)
     constexpr bool cscLoad = true;
     constexpr bool orderingSave = true;
     constexpr bool orderingLoad = true;
-    constexpr bool bvssSave = true;
-    constexpr bool bvssLoad = true;
+    constexpr bool bvssSave = false; // never set true atm, it is not saving CSR
+    constexpr bool bvssLoad = false; // never set true atm, it is not saving CSR
+    
     std::string kernelName = "BFS";
 
     // binary names
@@ -168,18 +169,18 @@ double Benchmark::run(const Matrix& matrix)
     CSC* csc;
     if (std::filesystem::exists(std::filesystem::path(cscBinaryName)) && cscLoad)
     {
-        std::cout << "CSC construction started." << std::endl;
         csc = new CSC;
         csc->constructFromBinary(cscBinaryName);
-        std::cout << "CSC constructed." << std::endl;
     }
     else
     {
+        std::cout << "CSC construction started." << std::endl;
         csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
         if (cscSave)
         {
             csc->saveToBinary(cscBinaryName);
         }
+        std::cout << "CSC constructed." << std::endl;
     }
     //
 

@@ -437,6 +437,9 @@ bool CSC::checkSymmetry()
 CSC* CSC::transpose()
 {
 	CSC* transpose = new CSC;
+	transpose->m_N = m_N;
+	transpose->m_NNZ = m_NNZ;
+	
 	transpose->m_ColPtrs = new unsigned[m_N + 1];
 	transpose->m_Rows = new unsigned[m_ColPtrs[m_N]];
 

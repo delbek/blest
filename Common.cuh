@@ -36,6 +36,7 @@ static bool FULL_PADDING;
 #define LAZY_KERNEL_THRESHOLD 25000
 #define SOCIAL_THRESHOLD 18
 #define SLICE_TYPE unsigned long long
+#define SWITCHING_CONSTANT 10
 
 #define K 128
 #define MASK unsigned

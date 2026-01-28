@@ -51,6 +51,7 @@ public:
     void bvssAnalysis();
     void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time);
 
+    [[nodiscard]] inline CSC* getCSR() {return m_CSR;}
     [[nodiscard]] inline unsigned& getN() {return m_N;}
     [[nodiscard]] inline unsigned& getSliceSize() {return m_SliceSize;}
     [[nodiscard]] inline unsigned& getNoMasks() {return m_NoMasks;}
@@ -71,6 +72,8 @@ private:
     double computeUpdateDivergence(const std::vector<VSet>& vsets);
 
 private:
+    CSC* m_CSR;
+    
     unsigned m_N;
     unsigned m_SliceSize;
     unsigned m_NoMasks;
@@ -111,6 +114,7 @@ BVSS::BVSS(unsigned sliceSize, unsigned noMasks, std::ofstream& file)
 
 BVSS::~BVSS()
 {
+    delete m_CSR;
     delete[] m_SliceSetPtrs;
     delete[] m_VirtualToReal;
     delete[] m_RealPtrs;
@@ -180,6 +184,8 @@ void BVSS::constructFromBinary(std::string filename)
 
 void BVSS::constructFromCSCMatrix(CSC* csc)
 {
+    m_CSR = csc->transpose();
+
     m_N = csc->getN();
     unsigned* colPtrs = csc->getColPtrs();
     unsigned* rows = csc->getRows();
