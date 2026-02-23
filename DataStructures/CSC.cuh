@@ -262,7 +262,6 @@ void CSC::constructFromBinary(std::string filename)
 	{
 		std::cout << "The graph is not a social network." << std::endl;
 	}
-    std::cout << "CSC read from binary." << std::endl;
 }
 
 unsigned CSC::maxBandwidth()
@@ -338,9 +337,8 @@ unsigned* CSC::orderFromBinary(std::string filename)
 
 	unsigned* inversePermutation = new unsigned[m_N];
 	in.read(reinterpret_cast<char*>(inversePermutation), (sizeof(unsigned) * m_N));
-
     in.close();
-    std::cout << "Ordering read from binary." << std::endl;
+
 	applyPermutation(inversePermutation);
 
 	return inversePermutation;
@@ -357,12 +355,9 @@ void CSC::saveOrderingToBinary(std::string filename, unsigned* inversePermutatio
 
 unsigned* CSC::reorder(unsigned sliceSize)
 {
-	double start = omp_get_wtime();
 	unsigned* inversePermutation = nullptr;
 	if (this->isSocialNetwork())
 	{
-		//unsigned* soloPerm = this->soloVertexPermutation();
-		//unsigned* innerPerm;
 		if (JACKARD_ON)
 		{
 			std::cout << "Reordering with JaccardWithWindows" << std::endl;
@@ -373,15 +368,13 @@ unsigned* CSC::reorder(unsigned sliceSize)
 			std::cout << "Natural Ordering" << std::endl;
 			inversePermutation = this->natural();
 		}
-		//inversePermutation = chainPermutations(m_N, soloPerm, innerPerm);
 	}
 	else
 	{
 		std::cout << "Reordering with RCM" << std::endl;
 		inversePermutation = this->rcm();
 	}
-	double end = omp_get_wtime();
-	std::cout << "Time took to reorder: " << end - start << std::endl;
+
 	return inversePermutation;
 }
 

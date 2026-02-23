@@ -43,7 +43,7 @@ public:
     BVSS& operator=(BVSS&& other) noexcept = delete;
     virtual ~BVSS();
 
-    void constructFromBinary(std::string filename);
+    void constructFromBinary(std::string filename, CSC* csc);
     void saveToBinary(std::string filename);
 
     void constructFromCSCMatrix(CSC* csc);
@@ -145,7 +145,7 @@ void BVSS::saveToBinary(std::string filename)
     out.close();
 }
 
-void BVSS::constructFromBinary(std::string filename)
+void BVSS::constructFromBinary(std::string filename, CSC* csc)
 {
     std::ifstream in(filename, std::ios::binary);
 
@@ -176,7 +176,7 @@ void BVSS::constructFromBinary(std::string filename)
 
     in.close();
 
-    std::cout << "BVSS read from binary." << std::endl;
+    m_CSR = csc->transpose();
 
     this->printBVSSData();
     //this->bvssAnalysis();
@@ -193,7 +193,6 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
     m_NoRealSliceSets = (m_N + m_SliceSize - 1) / m_SliceSize;
     m_NoVirtualSliceSets = 0;
 
-    double start = omp_get_wtime();
     std::vector<std::vector<VSet>> rsets(m_NoRealSliceSets);
     #pragma omp parallel num_threads(omp_get_max_threads())
     {
@@ -316,8 +315,6 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
             m_Masks[idx++] = vsets[vset].masks[i];
         }
     }
-    double end = omp_get_wtime();
-    std::cout << "BVSS construction took: " << end - start << " seconds." << std::endl;
     
     this->printBVSSData();
     //this->bvssAnalysis();

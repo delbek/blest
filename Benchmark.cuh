@@ -18,11 +18,11 @@
 
 #include "CSC.cuh"
 #include "BVSS.cuh"
-#include "BVSSBFSKernel.cuh"
-#include "BVSSCCKernel.cuh"
+#include "BFSKernel.cuh"
 #include <filesystem>
 #include "SuiteSparseMatrixDownloader.hpp"
 #include <unordered_set>
+#include "OutputVerifier.cuh"
 
 struct Config
 {
@@ -57,11 +57,11 @@ public:
     Benchmark(Benchmark&& other) noexcept = delete;
     Benchmark& operator=(const Benchmark& other) = delete;
     Benchmark& operator=(Benchmark&& other) noexcept = delete;
+    ~Benchmark() = default;
     
     void main(const Config& config);
     double run(const Matrix& matrix);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
-    void generateSourceVertices(std::string filename, unsigned n, unsigned k);
 };
 
 std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
@@ -84,24 +84,6 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     return sources;
 }
 
-void Benchmark::generateSourceVertices(std::string filename, unsigned n, unsigned k)
-{
-    std::ofstream file(filename);
-    std::unordered_set<unsigned> set;
-
-    for (unsigned i = 0; i < k; ++i)
-    {
-        unsigned vertex;
-        do
-        {
-            vertex = rand(0, n - 1);
-        } while (set.contains(vertex));
-        set.insert(vertex);
-        file << vertex << std::endl;
-    }
-    file.close();
-}
-
 void Benchmark::main(const Config& config)
 {
     SuiteSparseDownloader downloader;
@@ -116,6 +98,7 @@ void Benchmark::main(const Config& config)
     std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
     downloader.downloadMatrices(config.directory, matrices);
 
+    std::cout << "************************************************************" << std::endl;
     for (const auto& matrix: matrices)
     {
         std::cout << "Graph valid: " << matrix.isValid << std::endl;
@@ -142,7 +125,7 @@ void Benchmark::main(const Config& config)
         Matrix currentMatrix(matrix.installationPath, config.directory + matrix.name + ".txt", matrix.numericSymmetry, matrix.isBinary);
         double time = run(currentMatrix);
         std::cout << "Time: " << time << " ms." << std::endl;
-        std::cout << "******************************" << std::endl;
+        std::cout << "************************************************************" << std::endl;
     }
 }
 
@@ -154,8 +137,8 @@ double Benchmark::run(const Matrix& matrix)
     constexpr bool cscLoad = true;
     constexpr bool orderingSave = true;
     constexpr bool orderingLoad = true;
-    constexpr bool bvssSave = false; // never set true atm, it is not saving CSR
-    constexpr bool bvssLoad = false; // never set true atm, it is not saving CSR
+    constexpr bool bvssSave = true;
+    constexpr bool bvssLoad = true;
     
     std::string kernelName = "BFS";
 
@@ -166,6 +149,8 @@ double Benchmark::run(const Matrix& matrix)
     //
 
     // csc
+    double startCSC = omp_get_wtime();
+    std::cout << "CSC construction started." << std::endl; 
     CSC* csc;
     if (std::filesystem::exists(std::filesystem::path(cscBinaryName)) && cscLoad)
     {
@@ -174,14 +159,14 @@ double Benchmark::run(const Matrix& matrix)
     }
     else
     {
-        std::cout << "CSC construction started." << std::endl;
         csc = new CSC(matrix.filename, matrix.undirected, matrix.binary);
         if (cscSave)
         {
             csc->saveToBinary(cscBinaryName);
         }
-        std::cout << "CSC constructed." << std::endl;
     }
+    double endCSC = omp_get_wtime();
+    std::cout << "CSC construction completed in: " << endCSC - startCSC << " seconds." << std::endl;
     //
 
     if (csc->isSocialNetwork()) 
@@ -194,6 +179,8 @@ double Benchmark::run(const Matrix& matrix)
     }
 
     // csc ordering
+    double startOrder = omp_get_wtime();
+    std::cout << "Reordering started." << std::endl;
     unsigned* inversePermutation = nullptr;
     if (std::filesystem::exists(std::filesystem::path(orderingBinaryName)) && orderingLoad)
     {
@@ -207,118 +194,74 @@ double Benchmark::run(const Matrix& matrix)
             csc->saveOrderingToBinary(orderingBinaryName, inversePermutation);
         }
     }
+    double endOrder = omp_get_wtime();
+    std::cout << "Reordering completed in: " << endOrder - startOrder << " seconds." << std::endl;
     //
 
     // bvss
+    double startBVSS = omp_get_wtime();
+    std::cout << "BVSS construction started." << std::endl;
     std::ofstream file(matrix.filename + ".csv");
     BVSS* bvss = new BVSS(sliceSize, noMasks, file);
     if (std::filesystem::exists(std::filesystem::path(bvssBinaryName)) && bvssLoad)
     {
-        bvss->constructFromBinary(bvssBinaryName);
+        bvss->constructFromBinary(bvssBinaryName, csc);
     }
     else
     {
-        std::cout << "BVSS construction started." << std::endl;
         bvss->constructFromCSCMatrix(csc);
         if (bvssSave)
         {
             bvss->saveToBinary(bvssBinaryName);
         }
-        std::cout << "BVSS constructed." << std::endl;
     }
+    double endBVSS = omp_get_wtime();
+    std::cout << "BVSS construction completed in: " << endBVSS - startBVSS << " seconds." << std::endl;
     //
 
+    std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
+    unsigned* permutation = new unsigned[csc->getN()];
+    for (unsigned old = 0; old < csc->getN(); ++old)
+    {
+        permutation[inversePermutation[old]] = old;
+    }
+
     double total = 0;
-    if (kernelName == "BFS")
+    // kernel run
+    BFSKernel* kernel = new BFSKernel(dynamic_cast<BitMatrix*>(bvss));
+    std::cout << "Kernels started." << std::endl;
+    std::vector<BFSResult> results = kernel->multiSourceRun(sources);
+    std::cout << "Kernels finished." << std::endl;
+    //
+    
+    // processing results
+    //OutputVerifier verifier;
+    for (auto& result: results)
     {
-        std::cout << "BFS kernels launching..." << std::endl;
-        // kernel run
-        BVSSBFSKernel* kernel = new BVSSBFSKernel(dynamic_cast<BitMatrix*>(bvss));
-        std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
-        unsigned* permutation = new unsigned[csc->getN()];
+        //verifier.verifyBFSOutput(csc, result);
+        result.sourceVertex = permutation[result.sourceVertex];
+        std::cout << "Source: " << result.sourceVertex << " - Number of levels processed: " << result.totalLevels << " - Total visited: " << result.noVisited << " - Time took: " << result.time * 1000 << " ms." << std::endl;
+        total += result.time;
+        unsigned* newLevels = new unsigned[csc->getN()];
         for (unsigned old = 0; old < csc->getN(); ++old)
         {
-            permutation[inversePermutation[old]] = old;
+            newLevels[old] = result.levels[inversePermutation[old]];
         }
-        unsigned nRun = 1;
-        unsigned nIgnore = 0;
-        unsigned iter = 0;
-        std::vector<BFSResult> results;
-        for (const auto& source: sources)
-        {
-            double run = 0;
-            for (unsigned i = 0; i < nRun; ++i)
-            {
-                BFSResult result = kernel->run(source);
-                result.sourceVertex = permutation[result.sourceVertex];
-                std::cout << "Source: " << result.sourceVertex << " - Number of levels processed: " << result.totalLevels << " - Total visited: " << result.noVisited << " - Time took: " << result.time * 1000 << " ms." << std::endl;
-                if (i >= nIgnore)
-                {
-                    results.emplace_back(result);
-                    run += result.time;
-                }
-                else
-                {
-                    delete[] result.levels;
-                }
-            }
-        
-            run /= (nRun - nIgnore);
-            total += run;
-            ++iter;
-        }
-        total /= iter;
-        //
-
-        // result save
-        for (auto& result: results)
-        {
-            unsigned* newLevels = new unsigned[csc->getN()];
-            for (unsigned old = 0; old < csc->getN(); ++old)
-            {
-                newLevels[old] = result.levels[inversePermutation[old]];
-            }
-            delete[] result.levels;
-            result.levels = newLevels;
-            bvss->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
-        }
-        //
-
-        // kernel cleanup
-        for (auto& result: results)
-        {
-            delete[] result.levels;
-        }
-        delete[] permutation;
-        delete kernel;
-        //
+        delete[] result.levels;
+        result.levels = newLevels;
+        bvss->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
     }
-    else if (kernelName == "CC")
+    total /= results.size();
+    //
+
+    // kernel cleanup
+    for (auto& result: results)
     {
-        std::cout << "CC kernels launching..." << std::endl;
-        // kernel run
-        BVSSCCKernel* kernel = new BVSSCCKernel(dynamic_cast<BitMatrix*>(bvss));
-        CCResult result = kernel->run();
-        total = result.time;
-        std::cout << "Number of components identified: " << result.noComponents << std::endl;
-        unsigned* newComponents = new unsigned[csc->getN()];
-        for (unsigned old = 0; old < csc->getN(); ++old)
-        {
-            newComponents[old] = result.components[inversePermutation[old]];
-        }
-        delete[] result.components;
-        result.components = newComponents;
-        //
-
-        // kernel cleanup
-        delete[] result.components;
-        delete kernel;
-        //
+        delete[] result.levels;
     }
-    else
-    {
-        std::cout << "No kernel found." << std::endl;
-    }
+    delete[] permutation;
+    delete kernel;
+    //
     
     // full cleanup
     delete bvss;

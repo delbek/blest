@@ -17,6 +17,9 @@
 #pragma once
 
 #include "BitMatrix.cuh"
+#include "BVSSBFSKernels.cuh"
+#include "BVSS.cuh"
+#include <array>
 
 struct BFSResult
 {
@@ -35,22 +38,669 @@ public:
     BFSKernel(BFSKernel&& other) noexcept = delete;
     BFSKernel& operator=(const BFSKernel& other) = delete;
     BFSKernel& operator=(BFSKernel&& other) noexcept = delete;
-    virtual ~BFSKernel() = default;
+    ~BFSKernel() = default;
 
-    virtual BFSResult hostCode(unsigned sourceVertex) = 0;
-    BFSResult run(unsigned sourceVertex);
+    std::vector<BFSResult> multiSourceRun(const std::vector<unsigned>& sources);
+    BFSResult singleSourceRun(unsigned sourceVertex, bool switching);
 
-protected:
-    BitMatrix* matrix;
+private:
+    BitMatrix* m_matrix;
 };
 
 BFSKernel::BFSKernel(BitMatrix* matrix)
-: matrix(matrix)
+: m_matrix(matrix)
 {
 
 }
 
-BFSResult BFSKernel::run(unsigned sourceVertex)
+std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& sources)
 {
-    return hostCode(sourceVertex);
+    if (sources.empty())
+    {
+        return {};
+    }
+
+    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
+    
+    // tune
+    bool switching = false;
+    if (lazyKernel)
+    {
+        BFSResult noSwitch = this->singleSourceRun(sources[0], false);
+        BFSResult withSwitch = this->singleSourceRun(sources[0], true);
+        if (withSwitch.time < noSwitch.time)
+        {
+            switching = true;
+            std::cout << "Switching-based kernel is enabled." << std::endl;
+        }
+    }
+    //
+    
+    std::vector<BFSResult> results;
+
+    CSC* csc = bvss->getCSR();
+    unsigned n = bvss->getN();
+    unsigned sliceSize = bvss->getSliceSize();
+    unsigned noMasks = bvss->getNoMasks();
+    unsigned noRealSliceSets = bvss->getNoRealSliceSets();
+    SLICE_TYPE noSlices = bvss->getNoSlices();
+    unsigned noSliceSets = bvss->getNoVirtualSliceSets();
+    SLICE_TYPE* sliceSetPtrs = bvss->getSliceSetPtrs();
+    unsigned* virtualToReal = bvss->getVirtualToReal();
+    unsigned* realPtrs = bvss->getRealPtrs();
+    unsigned* rowIds = bvss->getRowIds();
+    MASK* masks = bvss->getMasks();
+
+    auto allocateSharedMemory = [](int blockSize) -> size_t
+    {
+        return 0;
+    };
+
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        if (lazyKernel)
+        {
+            if (switching)
+            {
+                if (FULL_PADDING)
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazyFullPadSwitching;
+                }
+                else
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazySwitching;
+                }
+            }
+            else
+            {
+                if (FULL_PADDING)
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazyFullPad;
+                }
+                else
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Lazy;
+                }
+            }
+        }
+        else
+        {
+            if (FULL_PADDING)
+            {
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4FullPad;
+            }
+            else
+            {
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4;
+            }
+        }
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
+
+    gpuErrchk(cudaFuncSetAttribute(
+        kernelPtr,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        0))
+
+    int gridSize, blockSize;
+    gpuErrchk(cudaOccupancyMaxPotentialBlockSizeVariableSMem(
+                                                &gridSize, 
+                                                &blockSize, 
+                                                kernelPtr,
+                                                allocateSharedMemory,
+                                                0))
+
+    unsigned* d_RowPtrs;
+    unsigned* d_ColIds;
+    unsigned* d_N;
+    unsigned* d_NoSliceSets;
+    SLICE_TYPE* d_SliceSetPtrs;
+    unsigned* d_VirtualToReal;
+    unsigned* d_RealPtrs;
+    unsigned* d_RowIds;
+    MASK* d_Masks;
+
+    unsigned* d_NoWords;
+    unsigned* d_Frontier;
+    unsigned* d_SparseFrontierIds;
+    unsigned* d_UnvisitedCurrentSize;
+    unsigned* d_FrontierCurrentSize;
+    unsigned* d_VisitedNext;
+    unsigned* d_FrontierNext;
+    unsigned* d_SparseFrontierNextIds;
+    unsigned* d_UnvisitedNextSize;
+    unsigned* d_FrontierNextSize;
+    unsigned* d_Visited;
+    unsigned* d_Levels;
+
+    // data structure
+    unsigned noWords = (n + 31) / 32;
+    gpuErrchk(cudaMalloc(&d_N, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_RowPtrs, sizeof(unsigned) * (csc->getN() + 1)))
+    gpuErrchk(cudaMalloc(&d_ColIds, sizeof(unsigned) * csc->getNNZ()))
+    gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * noSlices))
+    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (noSlices / noMasks)))
+
+    gpuErrchk(cudaMemcpy(d_N, &csc->getN(), sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RowPtrs, csc->getColPtrs(), sizeof(unsigned) * (csc->getN() + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_ColIds, csc->getRows(), sizeof(unsigned) * csc->getNNZ(), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * noSlices, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (noSlices / noMasks), cudaMemcpyHostToDevice))
+
+    // algorithm
+    gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_UnvisitedCurrentSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_UnvisitedNextSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * n))
+
+    for (const auto& sourceVertex: sources)
+    {
+        BFSResult result;
+        result.sourceVertex = sourceVertex;
+        result.levels = new unsigned[n];
+        std::fill(result.levels, result.levels + n, UNSIGNED_MAX);
+        result.levels[sourceVertex] = 0;
+
+        gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
+
+        gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
+        gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
+        gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
+        gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
+        gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
+
+        std::vector<unsigned> initialVset;
+        for (unsigned vset = realPtrs[sourceVertex / sliceSize]; vset < realPtrs[sourceVertex / sliceSize + 1]; ++vset)
+        {
+            initialVset.emplace_back(vset);
+        }
+        unsigned initialFrontierSize = initialVset.size();
+        gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
+        unsigned unvisitedSize = csc->getN() - 1;
+        gpuErrchk(cudaMemcpy(d_UnvisitedCurrentSize, &unvisitedSize, sizeof(unsigned), cudaMemcpyHostToDevice))
+        gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
+
+        unsigned word = sourceVertex >> 5;
+        unsigned bit = sourceVertex & 31;
+        unsigned temp = (1u << bit);
+        gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+        gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+        gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+
+        double start;
+        if (!lazyKernel)
+        {
+            std::array<void*, 13> args =
+            {
+                (void*)&d_SliceSetPtrs,
+                (void*)&d_VirtualToReal,
+                (void*)&d_RealPtrs,
+                (void*)&d_RowIds,
+                (void*)&d_Masks,
+                (void*)&d_NoWords,
+                (void*)&d_Levels,
+                (void*)&d_Frontier,
+                (void*)&d_SparseFrontierIds,
+                (void*)&d_FrontierCurrentSize,
+                (void*)&d_FrontierNext,
+                (void*)&d_SparseFrontierNextIds,
+                (void*)&d_FrontierNextSize
+            };
+
+            start = omp_get_wtime();
+            gpuErrchk(cudaLaunchCooperativeKernel(
+                kernelPtr,
+                gridSize,
+                blockSize,
+                args.data(),
+                allocateSharedMemory(blockSize),
+                0))
+        }
+        else
+        {
+            if (switching)
+            {
+                std::array<void*, 19> args =
+                {
+                    (void*)&d_RowPtrs,
+                    (void*)&d_ColIds,
+                    (void*)&d_N,
+                    (void*)&d_SliceSetPtrs,
+                    (void*)&d_VirtualToReal,
+                    (void*)&d_RealPtrs,
+                    (void*)&d_RowIds,
+                    (void*)&d_Masks,
+                    (void*)&d_NoWords,
+                    (void*)&d_Levels,
+                    (void*)&d_Frontier,
+                    (void*)&d_Visited,
+                    (void*)&d_SparseFrontierIds,
+                    (void*)&d_UnvisitedCurrentSize,
+                    (void*)&d_FrontierCurrentSize,
+                    (void*)&d_VisitedNext,
+                    (void*)&d_SparseFrontierNextIds,
+                    (void*)&d_UnvisitedNextSize,
+                    (void*)&d_FrontierNextSize
+                };
+
+                start = omp_get_wtime();
+                gpuErrchk(cudaLaunchCooperativeKernel(
+                    kernelPtr,
+                    gridSize,
+                    blockSize,
+                    args.data(),
+                    allocateSharedMemory(blockSize),
+                    0))
+            }
+            else
+            {
+                std::array<void*, 14> args =
+                {
+                    (void*)&d_SliceSetPtrs,
+                    (void*)&d_VirtualToReal,
+                    (void*)&d_RealPtrs,
+                    (void*)&d_RowIds,
+                    (void*)&d_Masks,
+                    (void*)&d_NoWords,
+                    (void*)&d_Levels,
+                    (void*)&d_Frontier,
+                    (void*)&d_Visited,
+                    (void*)&d_SparseFrontierIds,
+                    (void*)&d_FrontierCurrentSize,
+                    (void*)&d_VisitedNext,
+                    (void*)&d_SparseFrontierNextIds,
+                    (void*)&d_FrontierNextSize
+                };
+                start = omp_get_wtime();
+                gpuErrchk(cudaLaunchCooperativeKernel(
+                    kernelPtr,
+                    gridSize,
+                    blockSize,
+                    args.data(),
+                    allocateSharedMemory(blockSize),
+                    0))
+            }
+        }
+        gpuErrchk(cudaPeekAtLastError())
+        gpuErrchk(cudaDeviceSynchronize())
+        double end = omp_get_wtime();
+
+        result.time = (end - start);
+
+        gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
+        results.emplace_back(result);
+    }
+
+    #pragma omp parallel for num_threads(omp_get_max_threads())
+    for (unsigned r = 0; r < results.size(); ++r)
+    {
+        results[r].totalLevels = 0;
+        results[r].noVisited = 0;
+        for (unsigned i = 0; i < n; ++i)
+        {
+            if (results[r].levels[i] != UNSIGNED_MAX)
+            {
+                results[r].totalLevels = std::max(results[r].totalLevels, results[r].levels[i]);
+                ++results[r].noVisited;
+            }
+        }
+        ++results[r].totalLevels;
+    }
+
+    gpuErrchk(cudaFree(d_RowPtrs))
+    gpuErrchk(cudaFree(d_ColIds))
+    gpuErrchk(cudaFree(d_NoSliceSets))
+    gpuErrchk(cudaFree(d_SliceSetPtrs))
+    gpuErrchk(cudaFree(d_VirtualToReal))
+    gpuErrchk(cudaFree(d_RealPtrs))
+    gpuErrchk(cudaFree(d_RowIds))
+    gpuErrchk(cudaFree(d_Masks))
+    gpuErrchk(cudaFree(d_N))
+    gpuErrchk(cudaFree(d_NoWords))
+    gpuErrchk(cudaFree(d_Frontier))
+    gpuErrchk(cudaFree(d_SparseFrontierIds))
+    gpuErrchk(cudaFree(d_UnvisitedCurrentSize))
+    gpuErrchk(cudaFree(d_FrontierCurrentSize))
+    gpuErrchk(cudaFree(d_VisitedNext))
+    gpuErrchk(cudaFree(d_SparseFrontierNextIds))
+    gpuErrchk(cudaFree(d_UnvisitedNextSize))
+    gpuErrchk(cudaFree(d_FrontierNextSize))
+    gpuErrchk(cudaFree(d_Visited))
+    gpuErrchk(cudaFree(d_Levels))
+    gpuErrchk(cudaFree(d_FrontierNext))
+
+    return results;
+}
+
+BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
+{
+    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    
+    CSC* csc = bvss->getCSR();
+    unsigned n = bvss->getN();
+    unsigned sliceSize = bvss->getSliceSize();
+    unsigned noMasks = bvss->getNoMasks();
+    unsigned noRealSliceSets = bvss->getNoRealSliceSets();
+    SLICE_TYPE noSlices = bvss->getNoSlices();
+    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
+    unsigned noSliceSets = bvss->getNoVirtualSliceSets();
+    SLICE_TYPE* sliceSetPtrs = bvss->getSliceSetPtrs();
+    unsigned* virtualToReal = bvss->getVirtualToReal();
+    unsigned* realPtrs = bvss->getRealPtrs();
+    unsigned* rowIds = bvss->getRowIds();
+    MASK* masks = bvss->getMasks();
+
+    BFSResult result;
+    result.sourceVertex = sourceVertex;
+    result.levels = new unsigned[n];
+    std::fill(result.levels, result.levels + n, UNSIGNED_MAX);
+    result.levels[sourceVertex] = 0;
+
+    auto allocateSharedMemory = [](int blockSize) -> size_t
+    {
+        return 0;
+    };
+
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        if (lazyKernel)
+        {
+            if (switching)
+            {
+                if (FULL_PADDING)
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazyFullPadSwitching;
+                }
+                else
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazySwitching;
+                }
+            }
+            else
+            {
+                if (FULL_PADDING)
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4LazyFullPad;
+                }
+                else
+                {
+                    kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4Lazy;
+                }
+            }
+        }
+        else
+        {
+            if (FULL_PADDING)
+            {
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4FullPad;
+            }
+            else
+            {
+                kernelPtr = (void*)BVSSBFSKernels::BVSSBFS8EnhancedSliceSize8NoMasks4;
+            }
+        }
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
+
+    gpuErrchk(cudaFuncSetAttribute(
+        kernelPtr,
+        cudaFuncAttributePreferredSharedMemoryCarveout,
+        0))
+
+    int gridSize, blockSize;
+    gpuErrchk(cudaOccupancyMaxPotentialBlockSizeVariableSMem(
+                                                &gridSize, 
+                                                &blockSize, 
+                                                kernelPtr,
+                                                allocateSharedMemory,
+                                                0))
+
+    unsigned* d_RowPtrs;
+    unsigned* d_ColIds;
+    unsigned* d_N;
+    unsigned* d_NoSliceSets;
+    SLICE_TYPE* d_SliceSetPtrs;
+    unsigned* d_VirtualToReal;
+    unsigned* d_RealPtrs;
+    unsigned* d_RowIds;
+    MASK* d_Masks;
+
+    unsigned* d_NoWords;
+    unsigned* d_Frontier;
+    unsigned* d_SparseFrontierIds;
+    unsigned* d_UnvisitedCurrentSize;
+    unsigned* d_FrontierCurrentSize;
+    unsigned* d_VisitedNext;
+    unsigned* d_FrontierNext;
+    unsigned* d_SparseFrontierNextIds;
+    unsigned* d_UnvisitedNextSize;
+    unsigned* d_FrontierNextSize;
+    unsigned* d_Visited;
+    unsigned* d_Levels;
+
+    // data structure
+    unsigned noWords = (n + 31) / 32;
+    gpuErrchk(cudaMalloc(&d_N, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_RowPtrs, sizeof(unsigned) * (csc->getN() + 1)))
+    gpuErrchk(cudaMalloc(&d_ColIds, sizeof(unsigned) * csc->getNNZ()))
+    gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
+    gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * noSlices))
+    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (noSlices / noMasks)))
+
+    gpuErrchk(cudaMemcpy(d_N, &csc->getN(), sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RowPtrs, csc->getColPtrs(), sizeof(unsigned) * (csc->getN() + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_ColIds, csc->getRows(), sizeof(unsigned) * csc->getNNZ(), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * noSlices, cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (noSlices / noMasks), cudaMemcpyHostToDevice))
+
+    // algorithm
+    gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_UnvisitedCurrentSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_UnvisitedNextSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
+    gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_FrontierNext, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * n))
+
+    gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
+    gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
+
+    gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
+
+    std::vector<unsigned> initialVset;
+    for (unsigned vset = realPtrs[sourceVertex / sliceSize]; vset < realPtrs[sourceVertex / sliceSize + 1]; ++vset)
+    {
+        initialVset.emplace_back(vset);
+    }
+    unsigned initialFrontierSize = initialVset.size();
+    gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
+    unsigned unvisitedSize = csc->getN() - 1;
+    gpuErrchk(cudaMemcpy(d_UnvisitedCurrentSize, &unvisitedSize, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
+
+    unsigned word = sourceVertex >> 5;
+    unsigned bit = sourceVertex & 31;
+    unsigned temp = (1u << bit);
+    gpuErrchk(cudaMemcpy(d_Frontier + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+    gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
+
+    double start;
+    if (!lazyKernel)
+    {
+        std::array<void*, 13> args =
+        {
+            (void*)&d_SliceSetPtrs,
+            (void*)&d_VirtualToReal,
+            (void*)&d_RealPtrs,
+            (void*)&d_RowIds,
+            (void*)&d_Masks,
+            (void*)&d_NoWords,
+            (void*)&d_Levels,
+            (void*)&d_Frontier,
+            (void*)&d_SparseFrontierIds,
+            (void*)&d_FrontierCurrentSize,
+            (void*)&d_FrontierNext,
+            (void*)&d_SparseFrontierNextIds,
+            (void*)&d_FrontierNextSize
+        };
+
+        start = omp_get_wtime();
+        gpuErrchk(cudaLaunchCooperativeKernel(
+            kernelPtr,
+            gridSize,
+            blockSize,
+            args.data(),
+            allocateSharedMemory(blockSize),
+            0))
+    }
+    else
+    {
+        if (switching)
+        {
+            std::array<void*, 19> args =
+            {
+                (void*)&d_RowPtrs,
+                (void*)&d_ColIds,
+                (void*)&d_N,
+                (void*)&d_SliceSetPtrs,
+                (void*)&d_VirtualToReal,
+                (void*)&d_RealPtrs,
+                (void*)&d_RowIds,
+                (void*)&d_Masks,
+                (void*)&d_NoWords,
+                (void*)&d_Levels,
+                (void*)&d_Frontier,
+                (void*)&d_Visited,
+                (void*)&d_SparseFrontierIds,
+                (void*)&d_UnvisitedCurrentSize,
+                (void*)&d_FrontierCurrentSize,
+                (void*)&d_VisitedNext,
+                (void*)&d_SparseFrontierNextIds,
+                (void*)&d_UnvisitedNextSize,
+                (void*)&d_FrontierNextSize
+            };
+
+            start = omp_get_wtime();
+            gpuErrchk(cudaLaunchCooperativeKernel(
+                kernelPtr,
+                gridSize,
+                blockSize,
+                args.data(),
+                allocateSharedMemory(blockSize),
+                0))
+        }
+        else
+        {
+            std::array<void*, 14> args =
+            {
+                (void*)&d_SliceSetPtrs,
+                (void*)&d_VirtualToReal,
+                (void*)&d_RealPtrs,
+                (void*)&d_RowIds,
+                (void*)&d_Masks,
+                (void*)&d_NoWords,
+                (void*)&d_Levels,
+                (void*)&d_Frontier,
+                (void*)&d_Visited,
+                (void*)&d_SparseFrontierIds,
+                (void*)&d_FrontierCurrentSize,
+                (void*)&d_VisitedNext,
+                (void*)&d_SparseFrontierNextIds,
+                (void*)&d_FrontierNextSize
+            };
+            start = omp_get_wtime();
+            gpuErrchk(cudaLaunchCooperativeKernel(
+                kernelPtr,
+                gridSize,
+                blockSize,
+                args.data(),
+                allocateSharedMemory(blockSize),
+                0))
+        }
+    }
+    gpuErrchk(cudaPeekAtLastError())
+    gpuErrchk(cudaDeviceSynchronize())
+    double end = omp_get_wtime();
+
+    result.time = (end - start);
+
+    gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
+    result.totalLevels = 0;
+    result.noVisited = 0;
+    for (unsigned i = 0; i < n; ++i)
+    {
+        if (result.levels[i] != UNSIGNED_MAX)
+        {
+            result.totalLevels = std::max(result.totalLevels, result.levels[i]);
+            ++result.noVisited;
+        }
+    }
+    ++result.totalLevels;
+
+    gpuErrchk(cudaFree(d_RowPtrs))
+    gpuErrchk(cudaFree(d_ColIds))
+    gpuErrchk(cudaFree(d_NoSliceSets))
+    gpuErrchk(cudaFree(d_SliceSetPtrs))
+    gpuErrchk(cudaFree(d_VirtualToReal))
+    gpuErrchk(cudaFree(d_RealPtrs))
+    gpuErrchk(cudaFree(d_RowIds))
+    gpuErrchk(cudaFree(d_Masks))
+    gpuErrchk(cudaFree(d_N))
+    gpuErrchk(cudaFree(d_NoWords))
+    gpuErrchk(cudaFree(d_Frontier))
+    gpuErrchk(cudaFree(d_SparseFrontierIds))
+    gpuErrchk(cudaFree(d_UnvisitedCurrentSize))
+    gpuErrchk(cudaFree(d_FrontierCurrentSize))
+    gpuErrchk(cudaFree(d_VisitedNext))
+    gpuErrchk(cudaFree(d_SparseFrontierNextIds))
+    gpuErrchk(cudaFree(d_UnvisitedNextSize))
+    gpuErrchk(cudaFree(d_FrontierNextSize))
+    gpuErrchk(cudaFree(d_Visited))
+    gpuErrchk(cudaFree(d_Levels))
+    gpuErrchk(cudaFree(d_FrontierNext))
+
+    return result;
 }
