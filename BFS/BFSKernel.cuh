@@ -74,6 +74,8 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
             switching = true;
             std::cout << "Switching-based kernel is enabled." << std::endl;
         }
+        delete[] noSwitch.levels;
+        delete[] withSwitch.levels;
     }
     //
     
