@@ -36,7 +36,7 @@ static Config parse_args(int argc, char** argv)
     bool windowSize_set = false;
     unsigned windowSize = 0;
 
-    auto require_value = [&](int& i, const char* opt) -> std::string
+    auto requireValue = [&](int& i, const char* opt) -> std::string
     {
         if (i + 1 >= argc)
         {
@@ -57,15 +57,15 @@ static Config parse_args(int argc, char** argv)
         }
         else if (arg == "-d")
         {
-            directory = require_value(i, "-d");
+            directory = requireValue(i, "-d");
         }
         else if (arg == "-g")
         {
-            matrixName = require_value(i, "-g");
+            matrixName = requireValue(i, "-g");
         }
         else if (arg == "-j")
         {
-            const std::string v = require_value(i, "-j");
+            const std::string v = requireValue(i, "-j");
             if (v == "0")
             {
                 jackardEnabled = false;
@@ -82,7 +82,7 @@ static Config parse_args(int argc, char** argv)
         }
         else if (arg == "-w")
         {
-            const std::string v = require_value(i, "-w");
+            const std::string v = requireValue(i, "-w");
             try
             {
                 unsigned long tmp = std::stoul(v);
