@@ -57,6 +57,7 @@ public:
 	double averageBandwidth();
 	unsigned maxProfile();
 	double averageProfile();
+	unsigned minDegree();
 	unsigned maxDegree();
 	double averageDegree();
 	//
@@ -108,7 +109,6 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 		file.ignore(2048, '\n');
 	}
 
-	double trash;
 	unsigned noLines;
 
 	file >> m_N >> m_N >> noLines;
@@ -117,12 +117,14 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 
 	// there exists an edge j -> i
 	unsigned i, j;
+	double value;
 	m_NNZ = 0;
 	for (unsigned iter = 0; iter < noLines; ++iter)
 	{
 		file >> j >> i; // read transpose
-		if (!binary) file >> trash;
-		if (i == j) continue;
+		if (!binary) file >> value;
+		else value = 1;
+		if (i == j || value == 0) continue;
 
 		--i;
 		--j;
@@ -162,6 +164,7 @@ CSC::CSC(std::string filename, bool undirected, bool binary)
 
 	double average = this->averageDegree();
 	std::cout << "Average degree: " << average << std::endl;
+	std::cout << "Min degree: " << this->minDegree() << std::endl;
 	std::cout << "Max degree: " << this->maxDegree() << std::endl;
 	//
 
@@ -253,6 +256,7 @@ void CSC::constructFromBinary(std::string filename)
     in.close();
 
 	std::cout << "Average degree: " << this->averageDegree() << std::endl;
+	std::cout << "Min degree: " << this->minDegree() << std::endl;
 	std::cout << "Max degree: " << this->maxDegree() << std::endl;
 	if (m_IsSocial)
 	{
@@ -308,6 +312,16 @@ double CSC::averageProfile()
 	}
 	average /= m_N;
 	return average;
+}
+
+unsigned CSC::minDegree()
+{
+	unsigned min = UNSIGNED_MAX;
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		min = std::min(min, m_ColPtrs[j + 1] - m_ColPtrs[j]);
+	}
+	return min;
 }
 
 unsigned CSC::maxDegree()
@@ -465,13 +479,14 @@ CSC* CSC::transpose()
 	}
 	ptrs[0] = 0;
 
+	transpose->m_IsSocial = m_IsSocial;
+
 	return transpose;
 }
 
 CSC* CSC::symmetrize()
 {
     std::vector<std::vector<unsigned>> cols(m_N);
-    cols.reserve(m_N);
     for (unsigned j = 0; j < m_N; ++j)
     {
         for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
@@ -495,11 +510,14 @@ CSC* CSC::symmetrize()
     }
 
     CSC* csc = new CSC;
-    csc->getN() = m_N;
-	csc->getColPtrs() = new unsigned[m_N + 1];
-	csc->getRows() = new unsigned[nnz];
-    unsigned* colPtrs = csc->getColPtrs();
-    unsigned* rows = csc->getRows();
+    csc->m_N = m_N;
+	csc->m_NNZ = nnz;
+	csc->m_ColPtrs = new unsigned[m_N + 1];
+	csc->m_Rows = new unsigned[nnz];
+	csc->m_IsSocial = (this->socialNetworkHelper() | (csc->averageDegree() > SOCIAL_THRESHOLD));
+
+    unsigned* colPtrs = csc->m_ColPtrs;
+    unsigned* rows = csc->m_Rows;
 
     colPtrs[0] = 0;
     for (unsigned j = 0; j < m_N; ++j)

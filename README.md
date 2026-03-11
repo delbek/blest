@@ -34,7 +34,7 @@ Deniz Elbek and Kamer Kaya. BLEST: Blazingly Efficient BFS using Tensor Cores (2
 
 2. Run
    ```bash
-   ./blest -d <directory> -g <graph_name> -j <0|1> -w <window_size>
+   ./blest -d <directory> -g <graph_name> -j <0|1> -w <window_size> -k BFS
    ```
    Argument Explanations:
 

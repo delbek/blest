@@ -16,23 +16,34 @@
 
 #pragma once
 
+#include <filesystem>
+#include <unordered_set>
+
+// Data Structures
 #include "CSC.cuh"
 #include "BVSS.cuh"
+//
+
+// Kernels
 #include "BFSKernel.cuh"
-#include <filesystem>
+#include "MBFSKernel.cuh"
+#include "ClosenessKernel.cuh"
+#include "CCKernel.cuh"
+//
+
 #include "SuiteSparseMatrixDownloader.hpp"
-#include <unordered_set>
 #include "OutputVerifier.cuh"
 
 struct Config
 {
-    Config(std::string directory, std::string matrixName, bool jackardEnabled, unsigned windowSize)
-    : directory(directory), matrixName(matrixName), jackardEnabled(jackardEnabled), windowSize(windowSize) {}
+    Config(std::string directory, std::string matrixName, bool jackardEnabled, unsigned windowSize, std::string kernelName)
+    : directory(directory), matrixName(matrixName), jackardEnabled(jackardEnabled), windowSize(windowSize), kernelName(kernelName) {}
 
     std::string directory;
     std::string matrixName;
     bool jackardEnabled;
     unsigned windowSize;
+    std::string kernelName;
 };
 
 struct Matrix
@@ -60,8 +71,9 @@ public:
     ~Benchmark() = default;
     
     void main(const Config& config);
-    double run(const Matrix& matrix);
+    double run(const Matrix& matrix, const Config& config);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
+    std::vector<unsigned> constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper);
 };
 
 std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
@@ -84,6 +96,16 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     return sources;
 }
 
+std::vector<unsigned> Benchmark::constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper)
+{
+    std::vector<unsigned> ret;
+    for (unsigned i = 0; i < no; ++i)
+    {
+        ret.emplace_back(rand(lower, upper));
+    }
+    return ret;
+}
+
 void Benchmark::main(const Config& config)
 {
     SuiteSparseDownloader downloader;
@@ -98,7 +120,7 @@ void Benchmark::main(const Config& config)
     std::vector<SuiteSparseDownloader::MatrixInfo> matrices = downloader.getMatrices(filter);
     downloader.downloadMatrices(config.directory, matrices);
 
-    std::cout << "************************************************************" << std::endl;
+    std::cout << "************************************************************************************************************************" << std::endl;
     for (const auto& matrix: matrices)
     {
         std::cout << "Graph valid: " << matrix.isValid << std::endl;
@@ -123,14 +145,18 @@ void Benchmark::main(const Config& config)
             << "----------------------------------------" << std::endl;
 
         Matrix currentMatrix(matrix.installationPath, config.directory + matrix.name + ".txt", matrix.numericSymmetry, matrix.isBinary);
-        double time = run(currentMatrix);
+        double time = run(currentMatrix, config);
         std::cout << "Time: " << time << " ms." << std::endl;
-        std::cout << "************************************************************" << std::endl;
+        std::cout << "************************************************************************************************************************" << std::endl;
     }
 }
 
-double Benchmark::run(const Matrix& matrix)
+double Benchmark::run(const Matrix& matrix, const Config& config)
 {
+    #ifdef MPI_AVAILABLE
+    MPI_Init(nullptr, nullptr);
+    #endif
+
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
     constexpr bool cscSave = true;
@@ -139,8 +165,8 @@ double Benchmark::run(const Matrix& matrix)
     constexpr bool orderingLoad = true;
     constexpr bool bvssSave = true;
     constexpr bool bvssLoad = true;
-    
-    std::string kernelName = "BFS";
+
+    std::string kernelName = config.kernelName;
 
     // binary names
     std::string cscBinaryName = matrix.filename + "_csc.bin";
@@ -219,54 +245,188 @@ double Benchmark::run(const Matrix& matrix)
     std::cout << "BVSS construction completed in: " << endBVSS - startBVSS << " seconds." << std::endl;
     //
 
-    std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
     unsigned* permutation = new unsigned[csc->getN()];
     for (unsigned old = 0; old < csc->getN(); ++old)
     {
         permutation[inversePermutation[old]] = old;
     }
 
-    double total = 0;
-    // kernel run
-    BFSKernel* kernel = new BFSKernel(dynamic_cast<BitMatrix*>(bvss));
-    std::cout << "Kernels started." << std::endl;
-    std::vector<BFSResult> results = kernel->multiSourceRun(sources);
-    std::cout << "Kernels finished." << std::endl;
-    //
-    
-    // processing results
     //OutputVerifier verifier;
-    for (auto& result: results)
-    {
-        //verifier.verifyBFSOutput(csc, result);
-        result.sourceVertex = permutation[result.sourceVertex];
-        std::cout << "Source: " << result.sourceVertex << " - Number of levels processed: " << result.totalLevels << " - Total visited: " << result.noVisited << " - Time took: " << result.time * 1000 << " ms." << std::endl;
-        total += result.time;
-        unsigned* newLevels = new unsigned[csc->getN()];
-        for (unsigned old = 0; old < csc->getN(); ++old)
-        {
-            newLevels[old] = result.levels[inversePermutation[old]];
-        }
-        delete[] result.levels;
-        result.levels = newLevels;
-        bvss->kernelAnalysis(result.sourceVertex, result.totalLevels, result.noVisited, result.time);
-    }
-    total /= results.size();
-    //
+    double total = 0;
 
-    // kernel cleanup
-    for (auto& result: results)
+    if (kernelName == "BFS") // BFS
     {
-        delete[] result.levels;
+        std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
+
+        // kernel run
+        std::cout << "************* RUNNING BFS KERNELS *************" << std::endl;
+        BFSKernel* kernel = new BFSKernel(dynamic_cast<BitMatrix*>(bvss));
+        std::vector<BFSResult> results = kernel->multiSourceRun(sources);
+        //
+        
+        // processing results
+        for (auto& result: results)
+        {
+            result.sourceVertex = permutation[result.sourceVertex];
+            total += result.time;
+            unsigned* newLevels = new unsigned[csc->getN()];
+            unsigned visitedCount = 0;
+            unsigned levelCount = 0;
+            for (unsigned old = 0; old < csc->getN(); ++old)
+            {
+                newLevels[old] = result.levels[inversePermutation[old]];
+                if (newLevels[old] != UNSIGNED_MAX)
+                {
+                    ++visitedCount;
+                    levelCount = std::max(levelCount, newLevels[old]);
+                }
+            }
+            std::cout << "Source: " << result.sourceVertex << " - Visited: " << visitedCount << " - Level: " << levelCount << " - Time (ms): " << result.time * 1000 << std::endl;
+            delete[] result.levels;
+            result.levels = newLevels;
+        }
+        total /= results.size();
+        //
+
+        // kernel cleanup
+        for (auto& result: results)
+        {
+            delete[] result.levels;
+        }
+        delete kernel;
+        //
     }
-    delete[] permutation;
-    delete kernel;
-    //
+    else if (kernelName == "MBFS") // MBFS
+    {
+        std::vector<unsigned> sources = this->constructSourceVertices(matrix.sourceFile, inversePermutation);
+
+        // kernel run
+        std::cout << "************* RUNNING MBFS KERNELS *************" << std::endl;
+        MBFSKernel* kernel = new MBFSKernel(dynamic_cast<BitMatrix*>(bvss));
+        MBFSResult result = kernel->run(sources);
+        //
+
+        total = result.time;
+
+        // kernel cleanup
+        delete[] result.levels;
+        delete kernel;
+        //
+    }
+    else if (kernelName == "Closeness")
+    {
+        // kernel run
+        std::cout << "************* RUNNING CLOSENESS CENTRALITY KERNELS *************" << std::endl;
+        ClosenessKernel* kernel = new ClosenessKernel(dynamic_cast<BitMatrix*>(bvss));
+        #ifdef MPI_AVAILABLE
+        ClosenessResult result = kernel->runMPI();
+        #else
+        ClosenessResult result = kernel->run();
+        #endif
+        //
+
+        total = result.time;
+
+        // kernel cleanup
+        delete[] result.distances;
+        delete kernel;
+        //
+    }
+    else if (kernelName == "CC")
+    {
+        if (csc->checkSymmetry() == false)
+        {
+            throw std::runtime_error("Connected components are not well-defined for directed graphs. Try weakly connected components.");
+        }
+
+        // kernel run
+        std::cout << "************* RUNNING CONNECTED COMPONENT KERNELS *************" << std::endl;
+        CCKernel* kernel = new CCKernel(dynamic_cast<BitMatrix*>(bvss));
+        CCResult result = kernel->run();
+        //
+
+        // finding number of connected components
+        unsigned* marker = new unsigned[csc->getN()];
+        std::fill(marker, marker + csc->getN(), 0);
+        for (unsigned i = 0; i < csc->getN(); ++i)
+        {
+            ++marker[result.components[i]];
+        }
+        unsigned noComponents = 0;
+        for (unsigned i = 0; i < csc->getN(); ++i)
+        {
+            if (marker[i] != 0)
+            {
+                ++noComponents;
+                if (marker[i] > 100)
+                {
+                    std::cout << "A large component found - Size: " << marker[i] << std::endl;
+                }
+            }
+        }
+        std::cout << "Number of connected components: " << noComponents << std::endl;
+        delete[] marker;
+        total = result.time;
+        //
+
+        // kernel cleanup
+        delete[] result.components;
+        delete kernel;
+        //
+    }
+    else if (kernelName == "WCC")
+    {
+        std::cout << "************* RUNNING WEAKLY CONNECTED COMPONENT KERNELS *************" << std::endl;
+        CSC* csc_s = csc->symmetrize();
+        std::ofstream file(matrix.filename + "_s.csv");
+        BVSS* bvss_s = new BVSS(sliceSize, noMasks, file);
+        bvss_s->constructFromCSCMatrix(csc_s);
+
+        // kernel run
+        CCKernel* kernel = new CCKernel(dynamic_cast<BitMatrix*>(bvss_s));
+        CCResult result = kernel->run();
+        //
+
+        // finding number of weakly connected components
+        unsigned* marker = new unsigned[csc->getN()];
+        std::fill(marker, marker + csc->getN(), 0);
+        for (unsigned i = 0; i < csc->getN(); ++i)
+        {
+            ++marker[result.components[i]];
+        }
+        unsigned noComponents = 0;
+        for (unsigned i = 0; i < csc->getN(); ++i)
+        {
+            if (marker[i] != 0)
+            {
+                ++noComponents;
+                if (marker[i] > 100)
+                {
+                    std::cout << "A large component found - Size: " << marker[i] << std::endl;
+                }
+            }
+        }
+        std::cout << "Number of weakly connected components: " << noComponents << std::endl;
+        delete[] marker;
+        total = result.time;
+        //
+
+        // kernel cleanup
+        delete csc_s;
+        delete bvss_s;
+        delete kernel;
+        //
+    }
+    else
+    {
+        throw std::runtime_error("No kernel found.");
+    }
     
     // full cleanup
     delete bvss;
     file.close();
     delete[] inversePermutation;
+    delete[] permutation;
     delete csc;
     //
 

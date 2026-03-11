@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include "BitMatrix.cuh"
 #include "BVSSBFSKernels.cuh"
 #include "BVSS.cuh"
 #include <array>
@@ -26,8 +25,6 @@ struct BFSResult
     double time;
     unsigned sourceVertex;
     unsigned* levels;
-    unsigned totalLevels;
-    unsigned noVisited;
 };
 
 class BFSKernel
@@ -160,7 +157,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
     unsigned* d_N;
-    unsigned* d_NoSliceSets;
     SLICE_TYPE* d_SliceSetPtrs;
     unsigned* d_VirtualToReal;
     unsigned* d_RealPtrs;
@@ -186,7 +182,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_RowPtrs, sizeof(unsigned) * (csc->getN() + 1)))
     gpuErrchk(cudaMalloc(&d_ColIds, sizeof(unsigned) * csc->getNNZ()))
-    gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1)))
     gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
@@ -197,7 +192,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RowPtrs, csc->getColPtrs(), sizeof(unsigned) * (csc->getN() + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_ColIds, csc->getRows(), sizeof(unsigned) * csc->getNNZ(), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
@@ -226,7 +220,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         result.levels[sourceVertex] = 0;
 
         gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
-
         gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
         gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
         gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
@@ -355,25 +348,8 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         results.emplace_back(result);
     }
 
-    #pragma omp parallel for num_threads(omp_get_max_threads())
-    for (unsigned r = 0; r < results.size(); ++r)
-    {
-        results[r].totalLevels = 0;
-        results[r].noVisited = 0;
-        for (unsigned i = 0; i < n; ++i)
-        {
-            if (results[r].levels[i] != UNSIGNED_MAX)
-            {
-                results[r].totalLevels = std::max(results[r].totalLevels, results[r].levels[i]);
-                ++results[r].noVisited;
-            }
-        }
-        ++results[r].totalLevels;
-    }
-
     gpuErrchk(cudaFree(d_RowPtrs))
     gpuErrchk(cudaFree(d_ColIds))
-    gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
     gpuErrchk(cudaFree(d_VirtualToReal))
     gpuErrchk(cudaFree(d_RealPtrs))
@@ -486,7 +462,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
     unsigned* d_N;
-    unsigned* d_NoSliceSets;
     SLICE_TYPE* d_SliceSetPtrs;
     unsigned* d_VirtualToReal;
     unsigned* d_RealPtrs;
@@ -512,7 +487,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_RowPtrs, sizeof(unsigned) * (csc->getN() + 1)))
     gpuErrchk(cudaMalloc(&d_ColIds, sizeof(unsigned) * csc->getNNZ()))
-    gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1)))
     gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
@@ -523,7 +497,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RowPtrs, csc->getColPtrs(), sizeof(unsigned) * (csc->getN() + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_ColIds, csc->getRows(), sizeof(unsigned) * csc->getNNZ(), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
@@ -548,7 +521,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
-
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
 
     std::vector<unsigned> initialVset;
@@ -669,22 +641,8 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
 
     result.time = (end - start);
 
-    gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
-    result.totalLevels = 0;
-    result.noVisited = 0;
-    for (unsigned i = 0; i < n; ++i)
-    {
-        if (result.levels[i] != UNSIGNED_MAX)
-        {
-            result.totalLevels = std::max(result.totalLevels, result.levels[i]);
-            ++result.noVisited;
-        }
-    }
-    ++result.totalLevels;
-
     gpuErrchk(cudaFree(d_RowPtrs))
     gpuErrchk(cudaFree(d_ColIds))
-    gpuErrchk(cudaFree(d_NoSliceSets))
     gpuErrchk(cudaFree(d_SliceSetPtrs))
     gpuErrchk(cudaFree(d_VirtualToReal))
     gpuErrchk(cudaFree(d_RealPtrs))

@@ -16,18 +16,19 @@
 
 #include "Benchmark.cuh"
 
-static void print_usage(const char* prog)
+static void printUsage(const char* prog)
 {
     std::cerr
         << "Usage: " << prog
-        << " -d <directory> -g <graph_name> -j <0|1> -w <window_size>\n"
+        << " -d <directory> -g <graph_name> -j <0|1> -w <window_size> -k <BFS|MBFS|Closeness|CC|WCC>\n"
         << "  -d \t Absolute directory path under which your BFS source files are located and to which BLEST will dump results and intermediate files (e.g, /home/blest/intermediate/)\n"
         << "  -g \t Graph name (e.g, GAP-twitter)\n"
         << "  -j \t Jaccard enabled (0 or 1) -- We recommend this to be set to 1\n"
-        << "  -w \t Window size (an unsigned integer) -- We recommend this to be set at least to 65536\n";
+        << "  -w \t Window size (an unsigned integer > 0) -- We recommend this to be set at least to 65536\n"
+        << "  -k \t Kernel name: BFS, MBFS, Closeness, CC, or WCC\n";
 }
 
-static Config parse_args(int argc, char** argv)
+static Config parseArgs(int argc, char** argv)
 {
     std::string directory;
     std::string matrixName;
@@ -35,6 +36,8 @@ static Config parse_args(int argc, char** argv)
     bool jackardEnabled = false;
     bool windowSize_set = false;
     unsigned windowSize = 0;
+    bool kernelName_set = false;
+    std::string kernelName;
 
     auto requireValue = [&](int& i, const char* opt) -> std::string
     {
@@ -52,7 +55,7 @@ static Config parse_args(int argc, char** argv)
 
         if (arg == "-h" || arg == "--help")
         {
-            print_usage(argv[0]);
+            printUsage(argv[0]);
             std::exit(0);
         }
         else if (arg == "-d")
@@ -86,17 +89,26 @@ static Config parse_args(int argc, char** argv)
             try
             {
                 unsigned long tmp = std::stoul(v);
-                if (tmp > static_cast<unsigned long>(std::numeric_limits<unsigned>::max()))
-                {
-                    throw std::out_of_range("window size too large");
-                }
                 windowSize = static_cast<unsigned>(tmp);
+                if (windowSize == 0)
+                {
+                    throw std::exception();
+                }
             }
             catch (const std::exception&)
             {
-                throw std::runtime_error("Invalid value for -w (expected unsigned integer), got: " + v);
+                throw std::runtime_error("Invalid value for -w (expected unsigned integer > 0), got: " + v);
             }
             windowSize_set = true;
+        }
+        else if (arg == "-k")
+        {
+            kernelName = requireValue(i, "-k");
+            if (kernelName != "BFS" && kernelName != "MBFS" && kernelName != "Closeness" && kernelName != "CC" && kernelName != "WCC")
+            {
+                throw std::runtime_error("Invalid value for -k (expected BFS, MBFS, Closeness, CC, or WCC), got: " + kernelName);
+            }
+            kernelName_set = true;
         }
         else
         {
@@ -106,17 +118,18 @@ static Config parse_args(int argc, char** argv)
 
     if (directory.empty()) throw std::runtime_error("Missing required option: -d <directory>");
     if (matrixName.empty()) throw std::runtime_error("Missing required option: -g <graph_name>");
+    if (!kernelName_set) throw std::runtime_error("Missing required option: -k <BFS|MBFS|Closeness|CC|WCC>");
     if (!jackardEnabled_set) throw std::runtime_error("Missing required option: -j <0|1>");
     if (!windowSize_set) throw std::runtime_error("Missing required option: -w <window_size>");
 
-    return Config{directory, matrixName, jackardEnabled, windowSize};
+    return Config{directory, matrixName, jackardEnabled, windowSize, kernelName};
 }
 
 int main(int argc, char** argv)
 {
     try
     {
-        Config config = parse_args(argc, argv);
+        Config config = parseArgs(argc, argv);
         Benchmark benchmark;
         benchmark.main(config);
 
@@ -124,8 +137,8 @@ int main(int argc, char** argv)
     }
     catch (const std::exception& e)
     {
+        printUsage(argv[0]);
         std::cerr << "Error: " << e.what() << std::endl;
-        print_usage(argv[0]);
         return 1;
     }
 }

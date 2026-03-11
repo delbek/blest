@@ -48,8 +48,6 @@ public:
 
     void constructFromCSCMatrix(CSC* csc);
     void printBVSSData();
-    void bvssAnalysis();
-    void kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time);
 
     [[nodiscard]] inline CSC* getCSR() {return m_CSR;}
     [[nodiscard]] inline unsigned& getN() {return m_N;}
@@ -179,7 +177,6 @@ void BVSS::constructFromBinary(std::string filename, CSC* csc)
     m_CSR = csc->transpose();
 
     this->printBVSSData();
-    //this->bvssAnalysis();
 }
 
 void BVSS::constructFromCSCMatrix(CSC* csc)
@@ -317,7 +314,6 @@ void BVSS::constructFromCSCMatrix(CSC* csc)
     }
     
     this->printBVSSData();
-    //this->bvssAnalysis();
 }
 
 void BVSS::distributeSlices(const VSet& rset, std::vector<VSet>& vsets)
@@ -534,59 +530,7 @@ void BVSS::printBVSSData()
     std::cout << "Compression ratio: " << compressionRatio << std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
 
-    double bvss = (m_NoVirtualSliceSets * 4) + ((m_NoRealSliceSets + 1) * 4) + (m_NoSlices * 4) + ((m_NoSlices / m_NoMasks) * 4);
-    double dynamics = (m_NoVirtualSliceSets * 8) + ((m_N / 32) * 12);
-    double level = m_N * 4;
-    std::cout << "Memory consumption (BVSS): " << bvss * 0.000000001 << " GB." << std::endl;
-    std::cout << "Memory consumption (BVSS + Dynamic Arrays): " << (bvss + dynamics) * 0.000000001 << " GB." << std::endl;
-    std::cout << "Memory consumption (BVSS + Dynamic Arrays + Level Array): " << (bvss + dynamics + level) * 0.000000001 << " GB." << std::endl;
-
     fileFlush(m_File, m_N); fileFlush(m_File, totalNumberOfEdgesCheck); fileFlush(m_File, m_UpdateDivergence); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
     fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
     fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, m_NoUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
-    m_File << std::endl;
-    m_File << "Source\tTotalLevels\tTotalVisited\tTime(ms)" << std::endl;
-}
-
-void BVSS::bvssAnalysis()
-{
-    MASK CONCEALER = (m_SliceSize == 32) ? static_cast<MASK>(0xFFFFFFFF) : ((static_cast<MASK>(1) << m_SliceSize) - 1);
-
-    unsigned noPatterns = static_cast<unsigned>(CONCEALER);
-    std::vector<unsigned> patterns(noPatterns, 0);
-    std::vector<unsigned> counts(m_SliceSize + 1, 0);
-    for (unsigned rset = 0; rset < m_NoRealSliceSets; ++rset)
-    {
-        for (unsigned vset = m_RealPtrs[rset]; vset < m_RealPtrs[rset + 1]; ++vset)
-        {
-            for (SLICE_TYPE slice = m_SliceSetPtrs[vset]; slice < m_SliceSetPtrs[vset + 1]; ++slice)
-            {
-                MASK current = m_Masks[slice / m_NoMasks];
-                unsigned shift = (slice % m_NoMasks) * m_SliceSize;
-                MASK pattern = ((current >> shift) & CONCEALER);
-                if (pattern != 0)
-                {
-                    ++counts[__builtin_popcount(pattern)];
-                    ++patterns[pattern];
-                }
-            }
-        }
-    }
-
-    for (unsigned i = 1; i <= m_SliceSize; ++i)
-    {
-        fileFlush(m_File, std::to_string(i) + " Bits");
-    }
-    m_File << std::endl;
-    for (unsigned i = 1; i <= m_SliceSize; ++i)
-    {
-        fileFlush(m_File, counts[i]);
-    }
-    m_File << std::endl;
-}
-
-void BVSS::kernelAnalysis(unsigned source, unsigned totalLevels, unsigned totalVisited, double time)
-{
-    fileFlush(m_File, source); fileFlush(m_File, totalLevels); fileFlush(m_File, totalVisited); fileFlush(m_File, time * 1000);
-    m_File << std::endl;
 }
