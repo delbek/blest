@@ -28,11 +28,6 @@ namespace BVSSClosenessKernels
         ptr1 = temp;
     }
 
-    __device__ __forceinline__ unsigned getVertexIndex(const unsigned& vertex, const unsigned& partitionSize)
-    {
-        return ((vertex & 7u) * partitionSize) + (vertex >> 3);
-    }
-
     __device__ __forceinline__ ulonglong4_32a xor256(const ulonglong4_32a& u1, const ulonglong4_32a& u2)
     {
         ulonglong4_32a ret;

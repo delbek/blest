@@ -28,11 +28,6 @@ namespace BVSSMBFSKernels
         ptr1 = temp;
     }
 
-    __device__ __forceinline__ unsigned getVertexIndex(const unsigned& vertex, const unsigned& partitionSize)
-    {
-        return ((vertex & 7u) * partitionSize) + (vertex >> 3);
-    }
-
     __device__ __forceinline__ ulonglong2 xor128(const ulonglong2& u1, const ulonglong2& u2)
     {
         ulonglong2 ret;

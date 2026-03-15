@@ -74,7 +74,7 @@ __device__ __forceinline__ unsigned long long getTime()
     return t;
 }
 
-inline unsigned getVertexIndex(const unsigned& vertex, const unsigned& partitionSize)
+__host__ __device__ __forceinline__ unsigned getVertexIndex(const unsigned& vertex, const unsigned& partitionSize)
 {
     return ((vertex & 7u) * partitionSize) + (vertex >> 3);
 }
