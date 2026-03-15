@@ -29,7 +29,7 @@
 struct ClosenessResult
 {
     double time;
-    unsigned* distances;
+    unsigned long long* distances;
 };
 
 class ClosenessKernel
@@ -43,9 +43,6 @@ public:
     ~ClosenessKernel() = default;
 
     ClosenessResult run();
-    #ifdef MPI_AVAILABLE
-    ClosenessResult runMPI();
-    #endif
 
 private:
     BitMatrix* m_matrix;
@@ -59,332 +56,12 @@ ClosenessKernel::ClosenessKernel(BitMatrix* matrix)
 
 ClosenessResult ClosenessKernel::run()
 {
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
-    CSC* csc = bvss->getCSR();
-    unsigned sliceSize = bvss->getSliceSize();
-    unsigned noMasks = bvss->getNoMasks();
-    unsigned noRealSliceSets = bvss->getNoRealSliceSets();
-    SLICE_TYPE noSlices = bvss->getNoSlices();
-    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
-    unsigned noSliceSets = bvss->getNoVirtualSliceSets();
-    SLICE_TYPE* sliceSetPtrs = bvss->getSliceSetPtrs();
-    unsigned* virtualToReal = bvss->getVirtualToReal();
-    unsigned* realPtrs = bvss->getRealPtrs();
-    unsigned* rowIds = bvss->getRowIds();
-    MASK* masks = bvss->getMasks();
-
-    unsigned n = bvss->getN();
-    unsigned paddedN = std::ceil(static_cast<double>(n) / 8) * 8;
-    unsigned partitionSize = paddedN / 8;
-
-    unsigned noChunks = (n + 255) / 256;
-
-    ClosenessResult result;
-    result.distances = new unsigned[paddedN];
-
-    auto allocateSharedMemory = [](int blockSize) -> size_t
-    {
-        return 0;
-    };
-
-    void* kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4Lazy;
-
-    gpuErrchk(cudaFuncSetAttribute(
-        kernelPtr,
-        cudaFuncAttributePreferredSharedMemoryCarveout,
-        0))
-
-    int gridSize, blockSize;
-    gpuErrchk(cudaOccupancyMaxPotentialBlockSizeVariableSMem(
-                                                &gridSize, 
-                                                &blockSize, 
-                                                kernelPtr,
-                                                allocateSharedMemory,
-                                                0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
-
-    unsigned* d_RowPtrs;
-    unsigned* d_ColIds;
-    unsigned* d_N;
-    unsigned* d_PaddedN;
-    unsigned* d_NoSliceSets;
-    SLICE_TYPE* d_SliceSetPtrs;
-    unsigned* d_VirtualToReal;
-    unsigned* d_RealPtrs;
-    unsigned* d_RowIds;
-    MASK* d_Masks;
-
-    ulonglong4_32a* d_Frontier;
-    unsigned* d_SparseFrontierIds;
-    unsigned* d_FrontierCurrentSize;
-    ulonglong4_32a* d_VisitedNext;
-    unsigned* d_SparseFrontierNextIds;
-    unsigned* d_FrontierNextSize;
-    ulonglong4_32a* d_Visited;
-    unsigned* d_Far;
-    ulonglong4_32a* d_ActiveRSets;
-
-    // data structure
-    gpuErrchk(cudaMalloc(&d_N, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_PaddedN, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_RowPtrs, sizeof(unsigned) * (csc->getN() + 1)))
-    gpuErrchk(cudaMalloc(&d_ColIds, sizeof(unsigned) * csc->getNNZ()))
-    gpuErrchk(cudaMalloc(&d_NoSliceSets, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_SliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1)))
-    gpuErrchk(cudaMalloc(&d_VirtualToReal, sizeof(unsigned) * noSliceSets))
-    gpuErrchk(cudaMalloc(&d_RealPtrs, sizeof(unsigned) * (noRealSliceSets + 1)))
-    gpuErrchk(cudaMalloc(&d_RowIds, sizeof(unsigned) * noSlices))
-    gpuErrchk(cudaMalloc(&d_Masks, sizeof(MASK) * (noSlices / noMasks)))
-
-    gpuErrchk(cudaMemcpy(d_N, &n, sizeof(unsigned), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_PaddedN, &paddedN, sizeof(unsigned), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_RowPtrs, csc->getColPtrs(), sizeof(unsigned) * (csc->getN() + 1), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_ColIds, csc->getRows(), sizeof(unsigned) * csc->getNNZ(), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_NoSliceSets, &noSliceSets, sizeof(unsigned), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_SliceSetPtrs, sliceSetPtrs, sizeof(SLICE_TYPE) * (noSliceSets + 1), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_VirtualToReal, virtualToReal, sizeof(unsigned) * noSliceSets, cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_RealPtrs, realPtrs, sizeof(unsigned) * (noRealSliceSets + 1), cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_RowIds, rowIds, sizeof(unsigned) * noSlices, cudaMemcpyHostToDevice))
-    gpuErrchk(cudaMemcpy(d_Masks, masks, sizeof(MASK) * (noSlices / noMasks), cudaMemcpyHostToDevice))
-
-    // algorithm
-    gpuErrchk(cudaMalloc(&d_Frontier, sizeof(ulonglong4_32a) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
-    gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(ulonglong4_32a) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
-    gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_Visited, sizeof(ulonglong4_32a) * paddedN))
-    gpuErrchk(cudaMalloc(&d_Far, sizeof(unsigned) * paddedN))
-    gpuErrchk(cudaMalloc(&d_ActiveRSets, sizeof(ulonglong4_32a) * noRealSliceSets))
-    gpuErrchk(cudaMemset(d_Far, 0, sizeof(unsigned) * paddedN))
-
-    std::unordered_map<unsigned, ulonglong4_32a> rsets;
-    std::vector<unsigned> initialVset;
-    std::unordered_map<unsigned, ulonglong4_32a> vertices;
-
-    double start = omp_get_wtime();
-    for (unsigned chunk = 0; chunk < noChunks; ++chunk)
-    {
-        // reset
-        gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(ulonglong4_32a) * paddedN))
-        gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(ulonglong4_32a) * paddedN))
-        gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
-        gpuErrchk(cudaMemset(d_Visited, 0, sizeof(ulonglong4_32a) * paddedN))
-        gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(ulonglong4_32a) * noRealSliceSets))
-        rsets.clear();
-        initialVset.clear();
-        vertices.clear();
-        rsets.reserve(256);
-        vertices.reserve(256);
-        //
-
-        unsigned vertexStart = chunk * 256;
-        unsigned vertexEnd = std::min(n, vertexStart + 256);
-        for (unsigned sourceVertex = vertexStart; sourceVertex < vertexEnd; ++sourceVertex)
-        {
-            unsigned f = sourceVertex - vertexStart;
-            unsigned relativeF = f;
-            if (f < 64)
-            {
-                if (vertices.contains(sourceVertex))
-                {
-                    vertices[sourceVertex].x |= (1ull << f);
-                }
-                else
-                {
-                    vertices[sourceVertex] = {(1ull << f), 0ull, 0ull, 0ull};
-                }
-
-                unsigned rset = sourceVertex / sliceSize;
-                if (!rsets.contains(rset))
-                {
-                    for (unsigned vset = realPtrs[rset]; vset < realPtrs[rset + 1]; ++vset)
-                    {
-                        initialVset.emplace_back(vset);
-                    }
-                    unsigned long long activeBit = (1ull << f);
-                    rsets[rset] = {activeBit, 0ull, 0ull, 0ull};
-                }
-                else
-                {
-                    unsigned long long activeBit = (1ull << f);
-                    rsets[rset].x |= activeBit;
-                }
-            }
-            else if (f < 128)
-            {
-                relativeF -= 64;
-
-                if (vertices.contains(sourceVertex))
-                {
-                    vertices[sourceVertex].y |= (1ull << relativeF);
-                }
-                else
-                {
-                    vertices[sourceVertex] = {0ull, (1ull << relativeF), 0ull, 0ull};
-                }
-
-                unsigned rset = sourceVertex / sliceSize;
-                if (!rsets.contains(rset))
-                {
-                    for (unsigned vset = realPtrs[rset]; vset < realPtrs[rset + 1]; ++vset)
-                    {
-                        initialVset.emplace_back(vset);
-                    }
-                    unsigned long long activeBit = (1ull << relativeF);
-                    rsets[rset] = {0ull, activeBit, 0ull, 0ull};
-                }
-                else
-                {
-                    unsigned long long activeBit = (1ull << relativeF);
-                    rsets[rset].y |= activeBit;
-                }
-            }
-            else if (f < 192)
-            {
-                relativeF -= 128;
-
-                if (vertices.contains(sourceVertex))
-                {
-                    vertices[sourceVertex].z |= (1ull << relativeF);
-                }
-                else
-                {
-                    vertices[sourceVertex] = {0ull, 0ull, (1ull << relativeF), 0ull};
-                }
-
-                unsigned rset = sourceVertex / sliceSize;
-                if (!rsets.contains(rset))
-                {
-                    for (unsigned vset = realPtrs[rset]; vset < realPtrs[rset + 1]; ++vset)
-                    {
-                        initialVset.emplace_back(vset);
-                    }
-                    unsigned long long activeBit = (1ull << relativeF);
-                    rsets[rset] = {0ull, 0ull, activeBit, 0ull};
-                }
-                else
-                {
-                    unsigned long long activeBit = (1ull << relativeF);
-                    rsets[rset].z |= activeBit;
-                }
-            }
-            else
-            {
-                relativeF -= 192;
-
-                if (vertices.contains(sourceVertex))
-                {
-                    vertices[sourceVertex].w |= (1ull << relativeF);
-                }
-                else
-                {
-                    vertices[sourceVertex] = {0ull, 0ull, 0ull, (1ull << relativeF)};
-                }
-
-                unsigned rset = sourceVertex / sliceSize;
-                if (!rsets.contains(rset))
-                {
-                    for (unsigned vset = realPtrs[rset]; vset < realPtrs[rset + 1]; ++vset)
-                    {
-                        initialVset.emplace_back(vset);
-                    }
-                    unsigned long long activeBit = (1ull << relativeF);
-                    rsets[rset] = {0ull, 0ull, 0ull, activeBit};
-                }
-                else
-                {
-                    unsigned long long activeBit = (1ull << relativeF);
-                    rsets[rset].w |= activeBit;
-                }
-            }
-        }
-
-        unsigned initialFrontierSize = initialVset.size();
-        gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
-        gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
-
-        for (const auto& rset: rsets)
-        {
-            gpuErrchk(cudaMemcpy(d_ActiveRSets + rset.first, &rset.second, sizeof(ulonglong4_32a), cudaMemcpyHostToDevice))
-        }
-
-        for (const auto& vertex: vertices)
-        {
-            gpuErrchk(cudaMemcpy(d_Frontier + getVertexIndex(vertex.first, partitionSize), &vertex.second, sizeof(ulonglong4_32a), cudaMemcpyHostToDevice))
-            gpuErrchk(cudaMemcpy(d_Visited + getVertexIndex(vertex.first, partitionSize), &vertex.second, sizeof(ulonglong4_32a), cudaMemcpyHostToDevice))
-            gpuErrchk(cudaMemcpy(d_VisitedNext + getVertexIndex(vertex.first, partitionSize), &vertex.second, sizeof(ulonglong4_32a), cudaMemcpyHostToDevice))
-        }
-
-        std::array<void*, 18> args =
-        {
-            (void*)&d_N,
-            (void*)&d_PaddedN,
-            (void*)&d_RowPtrs,
-            (void*)&d_ColIds,
-            (void*)&d_SliceSetPtrs,
-            (void*)&d_VirtualToReal,
-            (void*)&d_RealPtrs,
-            (void*)&d_RowIds,
-            (void*)&d_Masks,
-            (void*)&d_Far,
-            (void*)&d_ActiveRSets,
-            (void*)&d_Frontier,
-            (void*)&d_Visited,
-            (void*)&d_SparseFrontierIds,
-            (void*)&d_FrontierCurrentSize,
-            (void*)&d_VisitedNext,
-            (void*)&d_SparseFrontierNextIds,
-            (void*)&d_FrontierNextSize
-        };
-
-        gpuErrchk(cudaLaunchCooperativeKernel(
-            kernelPtr,
-            gridSize,
-            blockSize,
-            args.data(),
-            allocateSharedMemory(blockSize),
-            0))
-        gpuErrchk(cudaPeekAtLastError())
-        gpuErrchk(cudaDeviceSynchronize())
-    }
-    double end = omp_get_wtime();
-
-    result.time = (end - start);
-
-    gpuErrchk(cudaMemcpy(result.distances, d_Far, sizeof(unsigned) * paddedN, cudaMemcpyDeviceToHost))
-
-    gpuErrchk(cudaFree(d_N))
-    gpuErrchk(cudaFree(d_PaddedN))
-    gpuErrchk(cudaFree(d_RowPtrs))
-    gpuErrchk(cudaFree(d_ColIds))
-    gpuErrchk(cudaFree(d_NoSliceSets))
-    gpuErrchk(cudaFree(d_SliceSetPtrs))
-    gpuErrchk(cudaFree(d_VirtualToReal))
-    gpuErrchk(cudaFree(d_RealPtrs))
-    gpuErrchk(cudaFree(d_RowIds))
-    gpuErrchk(cudaFree(d_Masks))
-    gpuErrchk(cudaFree(d_Frontier))
-    gpuErrchk(cudaFree(d_SparseFrontierIds))
-    gpuErrchk(cudaFree(d_FrontierCurrentSize))
-    gpuErrchk(cudaFree(d_VisitedNext))
-    gpuErrchk(cudaFree(d_SparseFrontierNextIds))
-    gpuErrchk(cudaFree(d_FrontierNextSize))
-    gpuErrchk(cudaFree(d_Visited))
-    gpuErrchk(cudaFree(d_Far))
-    gpuErrchk(cudaFree(d_ActiveRSets))
-
-    return result;
-}
-
-#ifdef MPI_AVAILABLE
-ClosenessResult ClosenessKernel::runMPI()
-{
     int rank = 0;
     int worldSize = 1;
+    #ifdef MPI_AVAILABLE
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
+    #endif
 
     gpuErrchk(cudaSetDevice(0))
 
@@ -394,7 +71,6 @@ ClosenessResult ClosenessKernel::runMPI()
     unsigned noMasks = bvss->getNoMasks();
     unsigned noRealSliceSets = bvss->getNoRealSliceSets();
     SLICE_TYPE noSlices = bvss->getNoSlices();
-    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
     unsigned noSliceSets = bvss->getNoVirtualSliceSets();
     SLICE_TYPE* sliceSetPtrs = bvss->getSliceSetPtrs();
     unsigned* virtualToReal = bvss->getVirtualToReal();
@@ -412,18 +88,33 @@ ClosenessResult ClosenessKernel::runMPI()
     unsigned localChunkCount = baseChunksPerRank + (rank < remainderChunks ? 1u : 0u);
     unsigned localChunkBegin = rank * baseChunksPerRank + std::min(static_cast<unsigned>(rank), remainderChunks);
     unsigned localChunkEnd = localChunkBegin + localChunkCount;
-    constexpr unsigned taskSize = 256;
+    constexpr unsigned taskSize = TASK_SIZE;
     unsigned noTasks = std::ceil(static_cast<double>(localChunkEnd - localChunkBegin) / taskSize);
 
     ClosenessResult result;
-    result.distances = new unsigned[paddedN];
+    result.distances = new unsigned long long[paddedN];
 
     auto allocateSharedMemory = [](int blockSize) -> size_t
     {
         return 0;
     };
 
-    void* kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusion;
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        if (FULL_PADDING)
+        {
+            kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusion;
+        }
+        else
+        {
+            kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusionSwitching;
+        }
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
 
     gpuErrchk(cudaFuncSetAttribute(
         kernelPtr,
@@ -452,13 +143,21 @@ ClosenessResult ClosenessKernel::runMPI()
 
     ulonglong4_32a* d_Frontier;
     unsigned* d_SparseFrontierIds;
+    unsigned* d_UnvisitedCurrentSize;
     unsigned* d_FrontierCurrentSize;
     ulonglong4_32a* d_VisitedNext;
     unsigned* d_SparseFrontierNextIds;
+    unsigned* d_UnvisitedNextSize;
     unsigned* d_FrontierNextSize;
     ulonglong4_32a* d_Visited;
-    unsigned* d_Far;
+    unsigned long long* d_Far;
     ulonglong4_32a* d_ActiveRSets;
+    bool* d_DirtyRSets;
+    /*
+    // profiling
+    unsigned long long* d_LevelTime;
+    //
+    */
 
     // data structure
     gpuErrchk(cudaMalloc(&d_N, sizeof(unsigned)))
@@ -486,14 +185,23 @@ ClosenessResult ClosenessKernel::runMPI()
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(ulonglong4_32a) * paddedN * taskSize))
     gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_UnvisitedCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(ulonglong4_32a) * paddedN * taskSize))
     gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_UnvisitedNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(ulonglong4_32a) * paddedN * taskSize))
-    gpuErrchk(cudaMalloc(&d_Far, sizeof(unsigned) * paddedN))
+    gpuErrchk(cudaMalloc(&d_Far, sizeof(unsigned long long) * paddedN))
     gpuErrchk(cudaMalloc(&d_ActiveRSets, sizeof(ulonglong4_32a) * noRealSliceSets * taskSize))
-    gpuErrchk(cudaMemset(d_Far, 0, sizeof(unsigned) * paddedN))
+    gpuErrchk(cudaMalloc(&d_DirtyRSets, sizeof(bool) * noRealSliceSets))
+    /*
+    // profiling
+    gpuErrchk(cudaMalloc(&d_LevelTime, sizeof(unsigned long long) * n))
+    //
+    */
+
+    gpuErrchk(cudaMemset(d_Far, 0, sizeof(unsigned long long) * paddedN))
 
     std::vector<unsigned> initialVset;
     std::unordered_map<unsigned, ulonglong4_32a> rsets;
@@ -504,15 +212,21 @@ ClosenessResult ClosenessKernel::runMPI()
     {
         // task reset
         gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(ulonglong4_32a) * paddedN * taskSize))
-        gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(ulonglong4_32a) * paddedN * taskSize))
-        gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
         gpuErrchk(cudaMemset(d_Visited, 0, sizeof(ulonglong4_32a) * paddedN * taskSize))
+        gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(ulonglong4_32a) * paddedN * taskSize))
         gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(ulonglong4_32a) * noRealSliceSets * taskSize))
+        gpuErrchk(cudaMemset(d_DirtyRSets, 0, sizeof(bool) * noRealSliceSets))
         rsets.clear();
         rsets.reserve(256 * taskSize);
         initialVset.clear();
         initialVset.reserve(256 * taskSize);
         //
+
+        /*
+        // profiling
+        gpuErrchk(cudaMemset(d_LevelTime, 0, sizeof(unsigned long long) * n))
+        //
+        */
 
         unsigned chunkStart = localChunkBegin + taskNo * taskSize;
         unsigned chunkEnd = std::min(localChunkEnd, chunkStart + taskSize);
@@ -661,8 +375,10 @@ ClosenessResult ClosenessKernel::runMPI()
         unsigned initialFrontierSize = initialVset.size();
         gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
         gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
-
-        std::array<void*, 19> args =
+        unsigned initialUnvisitedSize = UNSIGNED_MAX;
+        gpuErrchk(cudaMemcpy(d_UnvisitedCurrentSize, &initialUnvisitedSize, sizeof(unsigned), cudaMemcpyHostToDevice))
+        
+        std::array<void*, 22> args =
         {
             (void*)&d_N,
             (void*)&d_PaddedN,
@@ -676,13 +392,21 @@ ClosenessResult ClosenessKernel::runMPI()
             (void*)&d_Masks,
             (void*)&d_Far,
             (void*)&d_ActiveRSets,
+            (void*)&d_DirtyRSets,
             (void*)&d_Frontier,
             (void*)&d_Visited,
             (void*)&d_SparseFrontierIds,
+            (void*)&d_UnvisitedCurrentSize,
             (void*)&d_FrontierCurrentSize,
             (void*)&d_VisitedNext,
             (void*)&d_SparseFrontierNextIds,
+            (void*)&d_UnvisitedNextSize,
             (void*)&d_FrontierNextSize
+            /*
+            // profiling
+            (void*)&d_LevelTime
+            //
+            */
         };
 
         double kernelStart = omp_get_wtime();
@@ -695,29 +419,43 @@ ClosenessResult ClosenessKernel::runMPI()
             0))
         gpuErrchk(cudaPeekAtLastError())
         gpuErrchk(cudaDeviceSynchronize())
+
+        /*
+        // profiling
+        unsigned long long* levelTime = new unsigned long long[n];
+        gpuErrchk(cudaMemcpy(levelTime, d_LevelTime, sizeof(unsigned long long) * n, cudaMemcpyDeviceToHost))
+        for (unsigned i = 0; i < n; ++i)
+        {
+            if (levelTime[i + 1] == 0) break;
+            std::cout << "Level: " <<  i + 1 << " took: " << levelTime[i + 1] - levelTime[i] << std::endl;
+        }
+        delete[] levelTime;
+        //
+        */
     }
     double end = omp_get_wtime();
 
     double localTime = (end - start);
     result.time = localTime;
 
-    gpuErrchk(cudaMemcpy(result.distances, d_Far, sizeof(unsigned) * paddedN, cudaMemcpyDeviceToHost))
+    gpuErrchk(cudaMemcpy(result.distances, d_Far, sizeof(unsigned long long) * paddedN, cudaMemcpyDeviceToHost))
+    #ifdef MPI_AVAILABLE
     if (rank == 0)
     {
-        MPI_Reduce(MPI_IN_PLACE, result.distances, static_cast<int>(paddedN), MPI_UNSIGNED, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(MPI_IN_PLACE, result.distances, static_cast<int>(paddedN), MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(MPI_IN_PLACE, &result.time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     }
     else
     {
-        MPI_Reduce(result.distances, nullptr, static_cast<int>(paddedN), MPI_UNSIGNED, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(result.distances, nullptr, static_cast<int>(paddedN), MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(&localTime, nullptr, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     }
-
     MPI_Finalize();
     if (rank != 0)
     {
         std::exit(0);
     }
+    #endif
 
     gpuErrchk(cudaFree(d_N))
     gpuErrchk(cudaFree(d_PaddedN))
@@ -731,14 +469,21 @@ ClosenessResult ClosenessKernel::runMPI()
     gpuErrchk(cudaFree(d_Masks))
     gpuErrchk(cudaFree(d_Frontier))
     gpuErrchk(cudaFree(d_SparseFrontierIds))
+    gpuErrchk(cudaFree(d_UnvisitedCurrentSize))
     gpuErrchk(cudaFree(d_FrontierCurrentSize))
     gpuErrchk(cudaFree(d_VisitedNext))
     gpuErrchk(cudaFree(d_SparseFrontierNextIds))
+    gpuErrchk(cudaFree(d_UnvisitedNextSize))
     gpuErrchk(cudaFree(d_FrontierNextSize))
     gpuErrchk(cudaFree(d_Visited))
     gpuErrchk(cudaFree(d_Far))
     gpuErrchk(cudaFree(d_ActiveRSets))
+    gpuErrchk(cudaFree(d_DirtyRSets))
+    /*
+    // profiling
+    gpuErrchk(cudaFree(d_LevelTime))
+    //
+    */
 
     return result;
 }
-#endif

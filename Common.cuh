@@ -31,18 +31,20 @@ using namespace cooperative_groups;
 
 static bool JACKARD_ON;
 static unsigned WINDOW_SIZE;
-
 static bool FULL_PADDING;
+
 #define LAZY_KERNEL_THRESHOLD 25000
 #define SOCIAL_THRESHOLD 18
 #define SLICE_TYPE unsigned long long
 #define SWITCHING_CONSTANT 10
-
+#define TASK_SIZE 256
 #define K 128
 #define MASK unsigned
-constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 #define WARP_SIZE 32
 #define UNSIGNED_MAX 4294967295
+#define UNSIGNED_LONG_MAX 18446744073709551615
+
+constexpr unsigned MASK_BITS = sizeof(MASK) * 8;
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)

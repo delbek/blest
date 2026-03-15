@@ -209,10 +209,10 @@ namespace BVSSBFSKernels
             unsigned totalUnvisited = 0;
             for (unsigned i = threadID; i < noWords; i += noThreads)
             {
-                unsigned currentVisited = visited[i];
-                totalUnvisited += __popc(~currentVisited);
+                unsigned current = visited[i];
                 unsigned next = visitedNext[i];
-                unsigned diff = currentVisited ^ next;
+                totalUnvisited += __popc(~next);
+                unsigned diff = current ^ next;
                 frontier[i] = diff;
                 unsigned rssOffset = i << 2;
                 if (diff != 0)
@@ -278,6 +278,7 @@ namespace BVSSBFSKernels
             {
                 levelTime[levelCount] = getTime();
             }
+            grid.sync();
             */
         }
     }
@@ -455,10 +456,10 @@ namespace BVSSBFSKernels
             unsigned totalUnvisited = 0;
             for (unsigned i = threadID; i < noWords; i += noThreads)
             {
-                unsigned currentVisited = visited[i];
-                totalUnvisited += __popc(~currentVisited);
+                unsigned current = visited[i];
                 unsigned next = visitedNext[i];
-                unsigned diff = currentVisited ^ next;
+                totalUnvisited += __popc(~next);
+                unsigned diff = current ^ next;
                 frontier[i] = diff;
                 unsigned rssOffset = i << 2;
                 if (diff != 0)
@@ -524,6 +525,7 @@ namespace BVSSBFSKernels
             {
                 levelTime[levelCount] = getTime();
             }
+            grid.sync();
             */
         }
     }

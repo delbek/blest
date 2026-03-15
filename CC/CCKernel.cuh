@@ -50,6 +50,8 @@ CCKernel::CCKernel(BitMatrix* matrix)
 
 CCResult CCKernel::run()
 {
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     unsigned n = bvss->getN();
     unsigned sliceSize = bvss->getSliceSize();
@@ -104,6 +106,7 @@ CCResult CCKernel::run()
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_NoSliceSets;
     SLICE_TYPE* d_SliceSetPtrs;
@@ -140,9 +143,9 @@ CCResult CCKernel::run()
     unsigned noWords = (n + 31) / 32;
     gpuErrchk(cudaMalloc(&d_NoWords, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Marker, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMalloc(&d_Components, sizeof(unsigned) * n))
@@ -153,7 +156,6 @@ CCResult CCKernel::run()
         unsigned last = (1u << (n & 31)) - 1;
         cudaMemcpy(d_Frontier + (noWords - 1), &last, sizeof(unsigned), cudaMemcpyHostToDevice);
     }
-    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Marker, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemcpy(d_NoWords, &noWords, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_Components, result.components, sizeof(unsigned) * n, cudaMemcpyHostToDevice))

@@ -84,6 +84,8 @@ MBFSResult MBFSKernel::run(const std::vector<unsigned>& sourceVertices)
 
 MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
 {
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
@@ -130,6 +132,7 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -177,10 +180,10 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
 
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * paddedN))
     gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * paddedN * sourceVertices.size()))
@@ -188,7 +191,6 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
     
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * paddedN))
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * paddedN))
-    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * paddedN))
     gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(unsigned) * noRealSliceSets))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * paddedN * sourceVertices.size(), cudaMemcpyHostToDevice))
@@ -306,6 +308,8 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
 
 MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
 {
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
@@ -352,6 +356,7 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -399,10 +404,10 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
 
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned long long) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned long long) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned long long) * paddedN))
     gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * paddedN * sourceVertices.size()))
@@ -410,7 +415,6 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
     
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned long long) * paddedN))
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned long long) * paddedN))
-    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned long long) * paddedN))
     gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(unsigned long long) * noRealSliceSets))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * paddedN * sourceVertices.size(), cudaMemcpyHostToDevice))
@@ -527,6 +531,8 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
 
 MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
 {
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
@@ -573,6 +579,7 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -620,10 +627,10 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
 
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(ulonglong2) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(ulonglong2) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(ulonglong2) * paddedN))
     gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * paddedN * sourceVertices.size()))
@@ -631,7 +638,6 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
     
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(ulonglong2) * paddedN))
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(ulonglong2) * paddedN))
-    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(ulonglong2) * paddedN))
     gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(ulonglong2) * noRealSliceSets))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * paddedN * sourceVertices.size(), cudaMemcpyHostToDevice))
@@ -782,6 +788,8 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
 
 MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
 {
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
@@ -828,6 +836,7 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -875,10 +884,10 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
 
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(ulonglong4_32a) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(ulonglong4_32a) * paddedN))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * paddedN * sourceVertices.size()))
@@ -886,7 +895,6 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(ulonglong4_32a) * paddedN))
-    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(ulonglong4_32a) * noRealSliceSets))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * paddedN * sourceVertices.size(), cudaMemcpyHostToDevice))

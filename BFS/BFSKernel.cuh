@@ -57,6 +57,8 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         return {};
     }
 
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
     
@@ -153,6 +155,7 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -200,11 +203,11 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
 
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_UnvisitedCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_UnvisitedNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
@@ -222,7 +225,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
         gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
         gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
-        gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
         gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
         gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
 
@@ -233,7 +235,7 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         }
         unsigned initialFrontierSize = initialVset.size();
         gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
-        unsigned unvisitedSize = csc->getN() - 1;
+        unsigned unvisitedSize = UNSIGNED_MAX;
         gpuErrchk(cudaMemcpy(d_UnvisitedCurrentSize, &unvisitedSize, sizeof(unsigned), cudaMemcpyHostToDevice))
         gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
 
@@ -374,8 +376,9 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
 
 BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
 {
+    gpuErrchk(cudaSetDevice(0))
+
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
-    
     CSC* csc = bvss->getCSR();
     unsigned n = bvss->getN();
     unsigned sliceSize = bvss->getSliceSize();
@@ -458,6 +461,7 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
+    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -505,11 +509,11 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
 
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_UnvisitedCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets)) // storing vset or rset?
+    gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
     gpuErrchk(cudaMalloc(&d_UnvisitedNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(unsigned) * noWords))
@@ -518,7 +522,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
 
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
-    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
@@ -530,7 +533,7 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     }
     unsigned initialFrontierSize = initialVset.size();
     gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
-    unsigned unvisitedSize = csc->getN() - 1;
+    unsigned unvisitedSize = UNSIGNED_MAX;
     gpuErrchk(cudaMemcpy(d_UnvisitedCurrentSize, &unvisitedSize, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
 

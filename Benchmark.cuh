@@ -318,11 +318,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         // kernel run
         std::cout << "************* RUNNING CLOSENESS CENTRALITY KERNELS *************" << std::endl;
         ClosenessKernel* kernel = new ClosenessKernel(dynamic_cast<BitMatrix*>(bvss));
-        #ifdef MPI_AVAILABLE
-        ClosenessResult result = kernel->runMPI();
-        #else
         ClosenessResult result = kernel->run();
-        #endif
         //
 
         total = result.time;
@@ -376,13 +372,13 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     }
     else if (kernelName == "WCC")
     {
-        std::cout << "************* RUNNING WEAKLY CONNECTED COMPONENT KERNELS *************" << std::endl;
         CSC* csc_s = csc->symmetrize();
         std::ofstream file(matrix.filename + "_s.csv");
         BVSS* bvss_s = new BVSS(sliceSize, noMasks, file);
         bvss_s->constructFromCSCMatrix(csc_s);
 
         // kernel run
+        std::cout << "************* RUNNING WEAKLY CONNECTED COMPONENT KERNELS *************" << std::endl;
         CCKernel* kernel = new CCKernel(dynamic_cast<BitMatrix*>(bvss_s));
         CCResult result = kernel->run();
         //

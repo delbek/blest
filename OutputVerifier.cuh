@@ -75,16 +75,16 @@ void OutputVerifier::verifyMBFSOutput(CSC* csc, const MBFSResult& result)
 
 void OutputVerifier::verifyClosenessOutput(CSC* csc, const ClosenessResult& result)
 {
-    unsigned long long paddedN = static_cast<unsigned long long>(std::ceil(static_cast<double>(csc->getN()) / 8) * 8);
+    unsigned paddedN = static_cast<unsigned>(std::ceil(static_cast<double>(csc->getN()) / 8) * 8);
     unsigned partitionSize = paddedN / 8;
 
-    unsigned* far = new unsigned[paddedN];
+    unsigned long long* far = new unsigned long long[paddedN];
     std::fill(far, far + paddedN, 0);
     
     std::vector<unsigned> q(csc->getN());
     std::vector<bool> visited(csc->getN());
 
-    for (unsigned long long f = 0; f < csc->getN(); ++f)
+    for (unsigned f = 0; f < csc->getN(); ++f)
     {
         std::fill(visited.begin(), visited.end(), false);
         unsigned qs = 0;
