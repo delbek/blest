@@ -108,6 +108,7 @@ ClosenessResult ClosenessKernel::run()
         }
         else
         {
+            std::cout << "Switching-based kernel is enabled." << std::endl;
             kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusionSwitching;
         }
     }

@@ -43,30 +43,32 @@ namespace BVSSClosenessKernels
         return ret;
     }
 
-    __global__ void BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusion     (
-                                                                                const unsigned*             const   __restrict__ nPtr,
-                                                                                const unsigned*             const   __restrict__ paddedNPtr,
-                                                                                const unsigned*             const   __restrict__ noRealSliceSetsPtr,
-                                                                                const unsigned*             const   __restrict__ rowPtrs,
-                                                                                const unsigned*             const   __restrict__ colIds,
-                                                                                const SLICE_TYPE*           const   __restrict__ sliceSetPtrs,
-                                                                                const unsigned*             const   __restrict__ virtualToReal,
-                                                                                const unsigned*             const   __restrict__ realPtrs,
-                                                                                const unsigned*             const   __restrict__ rowIds,
-                                                                                const MASK*                 const   __restrict__ masks,
-                                                                                // current
-                                                                                unsigned long long*         const   __restrict__ far,
-                                                                                ulonglong4_32a*             const   __restrict__ activeRSets,
-                                                                                bool*                       const   __restrict__ dirtyRSets,
-                                                                                ulonglong4_32a*             const   __restrict__ frontier,
-                                                                                ulonglong4_32a*             const   __restrict__ visited,
-                                                                                unsigned*                           __restrict__ sparseFrontierIds,
-                                                                                unsigned*                           __restrict__ frontierCurrentSizePtr,
-                                                                                // next
-                                                                                ulonglong4_32a*             const   __restrict__ visitedNext,
-                                                                                unsigned*                           __restrict__ sparseFrontierNextIds,
-                                                                                unsigned*                           __restrict__ frontierNextSizePtr
-                                                                                )
+    __global__ void BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusion (
+                                                                            const unsigned*             const   __restrict__ nPtr,
+                                                                            const unsigned*             const   __restrict__ paddedNPtr,
+                                                                            const unsigned*             const   __restrict__ noRealSliceSetsPtr,
+                                                                            const unsigned*             const   __restrict__ rowPtrs,
+                                                                            const unsigned*             const   __restrict__ colIds,
+                                                                            const SLICE_TYPE*           const   __restrict__ sliceSetPtrs,
+                                                                            const unsigned*             const   __restrict__ virtualToReal,
+                                                                            const unsigned*             const   __restrict__ realPtrs,
+                                                                            const unsigned*             const   __restrict__ rowIds,
+                                                                            const MASK*                 const   __restrict__ masks,
+                                                                            // current
+                                                                            unsigned long long*         const   __restrict__ far,
+                                                                            ulonglong4_32a*             const   __restrict__ activeRSets,
+                                                                            bool*                       const   __restrict__ dirtyRSets,
+                                                                            ulonglong4_32a*             const   __restrict__ frontier,
+                                                                            ulonglong4_32a*             const   __restrict__ visited,
+                                                                            unsigned*                           __restrict__ sparseFrontierIds,
+                                                                            unsigned*                           __restrict__ unvisitedCurrentSizePtr,
+                                                                            unsigned*                           __restrict__ frontierCurrentSizePtr,
+                                                                            // next
+                                                                            ulonglong4_32a*             const   __restrict__ visitedNext,
+                                                                            unsigned*                           __restrict__ sparseFrontierNextIds,
+                                                                            unsigned*                           __restrict__ unvisitedNextSizePtr,
+                                                                            unsigned*                           __restrict__ frontierNextSizePtr
+                                                                            )
     {
         auto warp = coalesced_threads();
         auto grid = this_grid();
