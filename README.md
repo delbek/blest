@@ -47,8 +47,7 @@ Paper:
    ```
    Argument Explanations:
 
-   - -d: Absolute directory path under which your BFS source files (ending with .txt) are located and to which BLEST will dump 
-       results and intermediate files (e.g, /home/blest/intermediate/)
+   - -d: Absolute directory path under which your BFS source files (ending with .txt) are located and to which BLEST will dump intermediate files (e.g, /home/blest/intermediate/)
 
    - -g: Graph name (e.g, GAP-twitter)
 
@@ -56,8 +55,10 @@ Paper:
 
    - -w: Window size (an unsigned integer) -- We recommend this to be set at least to 65536
 
-   Note: You do not need to download graphs as the library will download it for you if it finds in SuiteSparse.
+3. Notes
 
-   Note: An example BFS source file for GAP-twitter is shared with you under intermediate/ directory.
+   - You do not need to download graphs as the library will download it for you if it finds in SuiteSparse.
 
-   Note: If you change the ordering arguments (-j or -w) between runs, delete any cached .bin files in the directory specified by -d. Otherwise, BLEST may reuse the old cache and ignore your new ordering settings.
+   - An example BFS source file for GAP-twitter is shared with you under intermediate/ directory.
+
+   - If you change the ordering arguments (-j or -w) between runs, delete any cached .bin files in the directory specified by -d. Otherwise, BLEST may reuse the old cache and ignore your new ordering settings.

@@ -21,7 +21,7 @@ static void printUsage(const char* prog)
     std::cerr
         << "Usage: " << prog
         << " -d <directory> -g <graph_name> -j <0|1> -w <window_size> -k <BFS|MBFS|Closeness|CC|WCC>\n"
-        << "  -d \t Absolute directory path under which your BFS source files are located and to which BLEST will dump results and intermediate files (e.g, /home/blest/intermediate/)\n"
+        << "  -d \t Absolute directory path under which your BFS source files are located and to which BLEST will dump intermediate files (e.g, /home/blest/intermediate/)\n"
         << "  -g \t Graph name (e.g, GAP-twitter)\n"
         << "  -j \t Jaccard enabled (0 or 1) -- We recommend this to be set to 1\n"
         << "  -w \t Window size (an unsigned integer > 0) -- We recommend this to be set at least to 65536\n"
