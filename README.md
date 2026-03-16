@@ -2,7 +2,7 @@
 
 BLEST is a state-of-the-art library to execute Breadth First Search (BFS) on modern GPUs. Its novel data structure, combined with unprecedented compute mechanics, delivers immense performance across massive real-world graphs on massively parallel processors, making it one of the most competitive BFS frameworks ever proposed to date.
 
-Paper:
+Please see the paper:
 
 ```bibtex
 @article{Elbek2025BLEST,

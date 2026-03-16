@@ -17,6 +17,8 @@
 #pragma once
 
 #include <curl/curl.h>
+#include "omp.h"
+#include <unistd.h>
 
 #include <string>
 #include <vector>
@@ -27,10 +29,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cstdio>
-#include <iostream>
-#include "omp.h"
 #include <unordered_set>
-#include <unistd.h>
 
 class SuiteSparseDownloader
 {
@@ -47,10 +46,10 @@ public:
 		std::optional<unsigned long long> maxCols;
 		std::optional<unsigned long long> minNonzeros;
 		std::optional<unsigned long long> maxNonzeros;
-		std::optional<unsigned long long> minAverageNonzeroPerRow;
-		std::optional<unsigned long long> maxAverageNonzeroPerRow;
-		std::optional<unsigned long long> minAverageNonzeroPerCol;
-		std::optional<unsigned long long> maxAverageNonzeroPerCol;
+		std::optional<double> minAverageNonzeroPerRow;
+		std::optional<double> maxAverageNonzeroPerRow;
+		std::optional<double> minAverageNonzeroPerCol;
+		std::optional<double> maxAverageNonzeroPerCol;
 
 		std::optional<bool> isReal;
 		std::optional<bool> isBinary;
@@ -174,7 +173,7 @@ public:
 				#ifdef _OPENMP
 				tid = static_cast<unsigned>(omp_get_thread_num());
 				#endif
-				unsigned long long pid = static_cast<unsigned long long>(getpid());
+				unsigned long long pid = static_cast<unsigned long long>(::getpid());
 				std::filesystem::path tarPath = folderPath / (baseName + "." + std::to_string(pid) + "." + std::to_string(tid) + ".tar.gz");
 				std::filesystem::path extractDir = folderPath / (baseName + "." + std::to_string(pid) + "." + std::to_string(tid) + ".d");
 
@@ -478,8 +477,8 @@ private:
 			return false;
 		}
 
-		unsigned long long averagePerRow = m.nonzeros / m.rows;
-		unsigned long long averagePerCol = m.nonzeros / m.cols;
+		double averagePerRow = m.nonzeros / m.rows;
+		double averagePerCol = m.nonzeros / m.cols;
 
 		if (f.minAverageNonzeroPerRow && averagePerRow < f.minAverageNonzeroPerRow)
 		{
