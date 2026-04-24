@@ -53,6 +53,7 @@ namespace BVSSBFSKernels
                                                                     /*
                                                                     // profiling
                                                                     unsigned long long* levelTime
+                                                                    //
                                                                     */
                                                                     )
     {
@@ -97,7 +98,6 @@ namespace BVSSBFSKernels
                 {
                     unsigned unvisitedMask = ~visited[i];
                     bool isUnvisited = (unvisitedMask >> laneID) & 1;
-                    //bool setMe = false;
 
                     if (isUnvisited)
                     {
@@ -110,20 +110,11 @@ namespace BVSSBFSKernels
                                 if ((frontier[v >> 5] >> (v & 31)) & 1)
                                 {
                                     atomicOr(&visitedNext[i], 1u << laneID);
-                                    //setMe = true;
                                     break;
                                 }
                             }
                         }
                     }
-
-                    /*
-                    unsigned mask = warp.ballot(setMe);
-                    if (warp.thread_rank() == 0)
-                    {
-                        visitedNext[i] |= mask;
-                    }
-                    */
                 }
             }
             else
@@ -308,6 +299,7 @@ namespace BVSSBFSKernels
                                                                             /*
                                                                             // profiling
                                                                             unsigned long long* levelTime
+                                                                            //
                                                                             */
                                                                             )
     {
@@ -352,7 +344,6 @@ namespace BVSSBFSKernels
                 {
                     unsigned unvisitedMask = ~visited[i];
                     bool isUnvisited = (unvisitedMask >> laneID) & 1;
-                    //bool setMe = false;
 
                     if (isUnvisited)
                     {
@@ -365,20 +356,11 @@ namespace BVSSBFSKernels
                                 if ((frontier[v >> 5] >> (v & 31)) & 1)
                                 {
                                     atomicOr(&visitedNext[i], 1u << laneID);
-                                    //setMe = true;
                                     break;
                                 }
                             }
                         }
                     }
-
-                    /*
-                    unsigned mask = warp.ballot(setMe);
-                    if (warp.thread_rank() == 0)
-                    {
-                        visitedNext[i] |= mask;
-                    }
-                    */
                 }
             }
             else
