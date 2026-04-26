@@ -827,6 +827,7 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     unsigned* realPtrs = bvss->getRealPtrs();
     unsigned* rowIds = bvss->getRowIds();
     MASK* masks = bvss->getMasks();
+    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
 
     unsigned long long n = static_cast<unsigned long long>(bvss->getN());
     unsigned long long paddedN = static_cast<unsigned long long>(std::ceil(static_cast<double>(n) / 8) * 8);
@@ -848,17 +849,20 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
 
     // tune
     bool switching = false;
-    BFSKernel* kernel = new BFSKernel(m_matrix);
-    BFSResult noSwitch = kernel->singleSourceRun(sourceVertices[0], false);
-    BFSResult withSwitch = kernel->singleSourceRun(sourceVertices[0], true);
-    if (withSwitch.time < noSwitch.time)
+    if (lazyKernel)
     {
-        switching = true;
-        std::cout << "Switching-based kernel is enabled." << std::endl;
+        BFSKernel* kernel = new BFSKernel(m_matrix);
+        BFSResult noSwitch = kernel->singleSourceRun(sourceVertices[0], false);
+        BFSResult withSwitch = kernel->singleSourceRun(sourceVertices[0], true);
+        if (withSwitch.time < noSwitch.time)
+        {
+            switching = true;
+            std::cout << "Switching-based kernel is enabled." << std::endl;
+        }
+        delete[] noSwitch.levels;
+        delete[] withSwitch.levels;
+        delete kernel;
     }
-    delete[] noSwitch.levels;
-    delete[] withSwitch.levels;
-    delete kernel;
     //
 
     void* kernelPtr;

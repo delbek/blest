@@ -73,7 +73,7 @@ public:
     void main(const Config& config);
     double run(const Matrix& matrix, const Config& config);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
-    std::vector<unsigned> constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper, unsigned* inversePermutation);
+    std::vector<unsigned> constructGreatSourceVertices(std::string filename, BFSKernel* kernel, unsigned no, unsigned lower, unsigned upper, unsigned* permutation);
 };
 
 std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
@@ -96,18 +96,57 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     return sources;
 }
 
-std::vector<unsigned> Benchmark::constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper, unsigned* inversePermutation)
+std::vector<unsigned> Benchmark::constructGreatSourceVertices(std::string filename, BFSKernel* kernel, unsigned no, unsigned lower, unsigned upper, unsigned* permutation)
 {
-    std::ofstream file(filename);
-    std::vector<unsigned> ret;
+    const double FACTOR = 0.2;
+    const unsigned ITER = 5;
+
+    std::vector<unsigned> sources;
+    std::vector<double> times;
+    double total = 0;
+    // init
     for (unsigned i = 0; i < no; ++i)
     {
-        unsigned randomVertex = rand(lower, upper);
-        file << randomVertex << std::endl;
-        ret.emplace_back(inversePermutation[randomVertex]);
+        unsigned source = rand(lower, upper);
+        BFSResult result = kernel->singleSourceRun(source, false);
+        delete[] result.levels;
+        sources.emplace_back(source);
+        times.emplace_back(result.time);
+        total += result.time;
+    }
+    //
+    for (unsigned iter = 0; iter < ITER; ++iter)
+    {
+        bool allGood = true;
+        double average = total / no;
+        for (unsigned i = 0; i < no; ++i)
+        {
+            if (times[i] < average * (1.0 - FACTOR) || times[i] > average * (1.0 + FACTOR))
+            {
+                allGood = false;
+                unsigned newSource = rand(lower, upper);
+                BFSResult result = kernel->singleSourceRun(newSource, false);
+                delete[] result.levels;
+                if (std::abs(result.time - average) < std::abs(times[i] - average))
+                {
+                    total = total - times[i] + result.time;
+                    sources[i] = newSource;
+                    times[i] = result.time;
+                }
+            }
+        }
+        if (allGood)
+        {
+            break;
+        }
+    }
+    std::ofstream file(filename);
+    for (unsigned i = 0; i < no; ++i)
+    {
+        file << permutation[sources[i]] << std::endl;
     }
     file.close();
-    return ret;
+    return sources;
 }
 
 void Benchmark::main(const Config& config)
@@ -255,7 +294,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         permutation[inversePermutation[old]] = old;
     }
 
-    //OutputVerifier verifier; // the verification must be conducted on the raw kernel outputs
+    //OutputVerifier verifier; // the verification must be conducted on the raw/unpostprocessed kernel outputs
     double total = 0;
 
     if (kernelName == "BFS") // BFS

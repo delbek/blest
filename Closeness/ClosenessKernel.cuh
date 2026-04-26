@@ -77,6 +77,7 @@ ClosenessResult ClosenessKernel::run()
     unsigned* realPtrs = bvss->getRealPtrs();
     unsigned* rowIds = bvss->getRowIds();
     MASK* masks = bvss->getMasks();
+    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
 
     unsigned n = bvss->getN();
     unsigned paddedN = std::ceil(static_cast<double>(n) / 8) * 8;
@@ -101,17 +102,20 @@ ClosenessResult ClosenessKernel::run()
 
     // tune
     bool switching = false;
-    BFSKernel* kernel = new BFSKernel(m_matrix);
-    BFSResult noSwitch = kernel->singleSourceRun(0, false);
-    BFSResult withSwitch = kernel->singleSourceRun(0, true);
-    if (withSwitch.time < noSwitch.time)
+    if (lazyKernel)
     {
-        switching = true;
-        std::cout << "Switching-based kernel is enabled." << std::endl;
+        BFSKernel* kernel = new BFSKernel(m_matrix);
+        BFSResult noSwitch = kernel->singleSourceRun(0, false);
+        BFSResult withSwitch = kernel->singleSourceRun(0, true);
+        if (withSwitch.time < noSwitch.time)
+        {
+            switching = true;
+            std::cout << "Switching-based kernel is enabled." << std::endl;
+        }
+        delete[] noSwitch.levels;
+        delete[] withSwitch.levels;
+        delete kernel;
     }
-    delete[] noSwitch.levels;
-    delete[] withSwitch.levels;
-    delete kernel;
     //
 
     void* kernelPtr;
