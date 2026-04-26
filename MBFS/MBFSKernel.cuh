@@ -19,6 +19,7 @@
 #include "BVSS.cuh"
 #include "BVSSMBFSKernels.cuh"
 #include <array>
+#include "BFSKernel.cuh"
 
 struct MBFSResult
 {
@@ -118,7 +119,15 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
         return 0;
     };
 
-    void* kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy32BFS;
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy32BFS;
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
 
     gpuErrchk(cudaFuncSetAttribute(
         kernelPtr,
@@ -342,7 +351,15 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
         return 0;
     };
 
-    void* kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy64BFS;
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy64BFS;
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
 
     gpuErrchk(cudaFuncSetAttribute(
         kernelPtr,
@@ -565,7 +582,15 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
         return 0;
     };
 
-    void* kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy128BFS;
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy128BFS;
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
 
     gpuErrchk(cudaFuncSetAttribute(
         kernelPtr,
@@ -796,7 +821,6 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     unsigned noMasks = bvss->getNoMasks();
     unsigned noRealSliceSets = bvss->getNoRealSliceSets();
     SLICE_TYPE noSlices = bvss->getNoSlices();
-    bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
     unsigned noSliceSets = bvss->getNoVirtualSliceSets();
     SLICE_TYPE* sliceSetPtrs = bvss->getSliceSetPtrs();
     unsigned* virtualToReal = bvss->getVirtualToReal();
@@ -822,7 +846,37 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
         return 0;
     };
 
-    void* kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy256BFS;
+    // tune
+    bool switching = false;
+    BFSKernel* kernel = new BFSKernel(m_matrix);
+    BFSResult noSwitch = kernel->singleSourceRun(sourceVertices[0], false);
+    BFSResult withSwitch = kernel->singleSourceRun(sourceVertices[0], true);
+    if (withSwitch.time < noSwitch.time)
+    {
+        switching = true;
+        std::cout << "Switching-based kernel is enabled." << std::endl;
+    }
+    delete[] noSwitch.levels;
+    delete[] withSwitch.levels;
+    delete kernel;
+    //
+
+    void* kernelPtr;
+    if (sliceSize == 8)
+    {
+        if (switching)
+        {
+            kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy256BFSSwitching;
+        }
+        else
+        {
+            kernelPtr = (void*)BVSSMBFSKernels::BVSSMBFS8EnhancedSliceSize8NoMasks4Lazy256BFS;
+        }
+    }
+    else
+    {
+        throw std::runtime_error("No appropriate kernel found meeting the selected slice size and noMasks.");
+    }
 
     gpuErrchk(cudaFuncSetAttribute(
         kernelPtr,
@@ -851,13 +905,16 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
 
     ulonglong4_32a* d_Frontier;
     unsigned* d_SparseFrontierIds;
+    unsigned* d_UnvisitedCurrentSize;
     unsigned* d_FrontierCurrentSize;
     ulonglong4_32a* d_VisitedNext;
     unsigned* d_SparseFrontierNextIds;
+    unsigned* d_UnvisitedNextSize;
     unsigned* d_FrontierNextSize;
     ulonglong4_32a* d_Visited;
     unsigned* d_Levels;
     ulonglong4_32a* d_ActiveRSets;
+    bool* d_DirtyRSets;
 
     // data structure
     gpuErrchk(cudaMalloc(&d_N, sizeof(unsigned long long)))
@@ -885,18 +942,22 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     // algorithm
     gpuErrchk(cudaMalloc(&d_Frontier, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMalloc(&d_SparseFrontierIds, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_UnvisitedCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierCurrentSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_VisitedNext, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMalloc(&d_SparseFrontierNextIds, sizeof(unsigned) * noSliceSets))
+    gpuErrchk(cudaMalloc(&d_UnvisitedNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_FrontierNextSize, sizeof(unsigned)))
     gpuErrchk(cudaMalloc(&d_Visited, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMalloc(&d_Levels, sizeof(unsigned) * paddedN * sourceVertices.size()))
     gpuErrchk(cudaMalloc(&d_ActiveRSets, sizeof(ulonglong4_32a) * noRealSliceSets))
+    gpuErrchk(cudaMalloc(&d_DirtyRSets, sizeof(bool) * noRealSliceSets))
     
     gpuErrchk(cudaMemset(d_Frontier, 0, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(ulonglong4_32a) * paddedN))
     gpuErrchk(cudaMemset(d_ActiveRSets, 0, sizeof(ulonglong4_32a) * noRealSliceSets))
+    gpuErrchk(cudaMemset(d_DirtyRSets, 0, sizeof(bool) * noRealSliceSets))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * paddedN * sourceVertices.size(), cudaMemcpyHostToDevice))
 
     std::unordered_map<unsigned, ulonglong4_32a> rsets;
@@ -1027,6 +1088,8 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     unsigned initialFrontierSize = initialVset.size();
     gpuErrchk(cudaMemcpy(d_SparseFrontierIds, initialVset.data(), sizeof(unsigned) * initialFrontierSize, cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_FrontierCurrentSize, &initialFrontierSize, sizeof(unsigned), cudaMemcpyHostToDevice))
+    unsigned initialUnvisitedSize = UNSIGNED_MAX;
+    gpuErrchk(cudaMemcpy(d_UnvisitedCurrentSize, &initialUnvisitedSize, sizeof(unsigned), cudaMemcpyHostToDevice))
 
     for (const auto& rset: rsets)
     {
@@ -1040,7 +1103,7 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
         gpuErrchk(cudaMemcpy(d_VisitedNext + getVertexIndex(vertex.first, partitionSize), &vertex.second, sizeof(ulonglong4_32a), cudaMemcpyHostToDevice))
     }
 
-    std::array<void*, 18> args =
+    std::array<void*, 21> args =
     {
         (void*)&d_N,
         (void*)&d_PaddedN,
@@ -1053,12 +1116,15 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
         (void*)&d_Masks,
         (void*)&d_Levels,
         (void*)&d_ActiveRSets,
+        (void*)&d_DirtyRSets,
         (void*)&d_Frontier,
         (void*)&d_Visited,
         (void*)&d_SparseFrontierIds,
+        (void*)&d_UnvisitedCurrentSize,
         (void*)&d_FrontierCurrentSize,
         (void*)&d_VisitedNext,
         (void*)&d_SparseFrontierNextIds,
+        (void*)&d_UnvisitedNextSize,
         (void*)&d_FrontierNextSize
     };
 
@@ -1090,13 +1156,16 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     gpuErrchk(cudaFree(d_Masks))
     gpuErrchk(cudaFree(d_Frontier))
     gpuErrchk(cudaFree(d_SparseFrontierIds))
+    gpuErrchk(cudaFree(d_UnvisitedCurrentSize))
     gpuErrchk(cudaFree(d_FrontierCurrentSize))
     gpuErrchk(cudaFree(d_VisitedNext))
     gpuErrchk(cudaFree(d_SparseFrontierNextIds))
+    gpuErrchk(cudaFree(d_UnvisitedNextSize))
     gpuErrchk(cudaFree(d_FrontierNextSize))
     gpuErrchk(cudaFree(d_Visited))
     gpuErrchk(cudaFree(d_Levels))
     gpuErrchk(cudaFree(d_ActiveRSets))
+    gpuErrchk(cudaFree(d_DirtyRSets))
 
     return result;
 }

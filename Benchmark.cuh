@@ -73,7 +73,7 @@ public:
     void main(const Config& config);
     double run(const Matrix& matrix, const Config& config);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
-    std::vector<unsigned> constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper);
+    std::vector<unsigned> constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper, unsigned* inversePermutation);
 };
 
 std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
@@ -96,13 +96,17 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     return sources;
 }
 
-std::vector<unsigned> Benchmark::constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper)
+std::vector<unsigned> Benchmark::constructRandomSourceVertices(std::string filename, unsigned no, unsigned lower, unsigned upper, unsigned* inversePermutation)
 {
+    std::ofstream file(filename);
     std::vector<unsigned> ret;
     for (unsigned i = 0; i < no; ++i)
     {
-        ret.emplace_back(rand(lower, upper));
+        unsigned randomVertex = rand(lower, upper);
+        file << randomVertex << std::endl;
+        ret.emplace_back(inversePermutation[randomVertex]);
     }
+    file.close();
     return ret;
 }
 
@@ -251,7 +255,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         permutation[inversePermutation[old]] = old;
     }
 
-    //OutputVerifier verifier;
+    //OutputVerifier verifier; // the verification must be conducted on the raw kernel outputs
     double total = 0;
 
     if (kernelName == "BFS") // BFS
@@ -306,7 +310,30 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         MBFSResult result = kernel->run(sources);
         //
 
+        // processing results
+        unsigned long long paddedN = static_cast<unsigned long long>(std::ceil(static_cast<double>(csc->getN()) / 8) * 8);
+        unsigned partitionSize = paddedN / 8;
+        unsigned* newLevels = new unsigned[result.sources.size() * csc->getN()];
+        for (unsigned f = 0; f < result.sources.size(); ++f)
+        {
+            result.sources[f] = permutation[result.sources[f]];
+            unsigned levelCount = 0;
+            unsigned visitedCount = 0;
+            for (unsigned old = 0; old < csc->getN(); ++old)
+            {
+                newLevels[f * csc->getN() + old] = result.levels[f * paddedN + getVertexIndex(inversePermutation[old], partitionSize)];
+                if (newLevels[f * csc->getN() + old] != UNSIGNED_MAX)
+                {
+                    ++visitedCount;
+                    levelCount = std::max(levelCount, newLevels[f * csc->getN() + old]);
+                }
+            }
+            std::cout << "Source: " << result.sources[f] << " - Visited: " << visitedCount << " - Level: " << levelCount << std::endl;
+        }
+        delete[] result.levels;
+        result.levels = newLevels;
         total = result.time;
+        //
 
         // kernel cleanup
         delete[] result.levels;
@@ -321,7 +348,19 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         ClosenessResult result = kernel->run();
         //
 
+        // processing results
+        unsigned long long paddedN = static_cast<unsigned long long>(std::ceil(static_cast<double>(csc->getN()) / 8) * 8);
+        unsigned partitionSize = paddedN / 8;
+        unsigned long long* newDistances = new unsigned long long[csc->getN()];
+        for (unsigned old = 0; old < csc->getN(); ++old)
+        {
+            newDistances[old] = result.distances[getVertexIndex(inversePermutation[old], partitionSize)];
+            std::cout << "Vertex: " << old << " - Far: " << newDistances[old] << std::endl;
+        }
+        delete[] result.distances;
+        result.distances = newDistances;
         total = result.time;
+        //
 
         // kernel cleanup
         delete[] result.distances;

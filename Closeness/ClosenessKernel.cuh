@@ -99,17 +99,31 @@ ClosenessResult ClosenessKernel::run()
         return 0;
     };
 
+    // tune
+    bool switching = false;
+    BFSKernel* kernel = new BFSKernel(m_matrix);
+    BFSResult noSwitch = kernel->singleSourceRun(0, false);
+    BFSResult withSwitch = kernel->singleSourceRun(0, true);
+    if (withSwitch.time < noSwitch.time)
+    {
+        switching = true;
+        std::cout << "Switching-based kernel is enabled." << std::endl;
+    }
+    delete[] noSwitch.levels;
+    delete[] withSwitch.levels;
+    delete kernel;
+    //
+
     void* kernelPtr;
     if (sliceSize == 8)
     {
-        if (FULL_PADDING)
+        if (switching)
         {
-            kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusion;
+            kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusionSwitching;
         }
         else
         {
-            std::cout << "Switching-based kernel is enabled." << std::endl;
-            kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusionSwitching;
+            kernelPtr = (void*)BVSSClosenessKernels::BVSSCloseness8EnhancedSliceSize8NoMasks4LazyChunkFusion;
         }
     }
     else
