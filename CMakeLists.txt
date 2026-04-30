@@ -20,7 +20,7 @@ enable_language(CUDA)
 #
 
 # MPI
-#find_package(MPI QUIET)
+find_package(MPI QUIET)
 if(MPI_FOUND)
   add_definitions(-DMPI_AVAILABLE)
   include_directories(${MPI_INCLUDE_PATH})

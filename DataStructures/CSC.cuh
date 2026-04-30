@@ -494,41 +494,42 @@ CSC* CSC::symmetrize()
             unsigned i = m_Rows[nnz];
             cols[j].push_back(i);
             if (i != j)
-			{
-				cols[i].push_back(j);
-			}
+            {
+                cols[i].push_back(j);
+            }
         }
     }
 
-	unsigned nnz = 0;
+    unsigned nnz = 0;
     for (unsigned j = 0; j < m_N; ++j)
     {
         auto& v = cols[j];
         std::sort(v.begin(), v.end());
         v.erase(std::unique(v.begin(), v.end()), v.end());
-		nnz += v.size();
+        nnz += v.size();
     }
 
     CSC* csc = new CSC;
     csc->m_N = m_N;
-	csc->m_NNZ = nnz;
-	csc->m_ColPtrs = new unsigned[m_N + 1];
-	csc->m_Rows = new unsigned[nnz];
-	csc->m_IsSocial = (this->socialNetworkHelper() | (csc->averageDegree() > SOCIAL_THRESHOLD));
+    csc->m_NNZ = nnz;
+    csc->m_ColPtrs = new unsigned[m_N + 1];
+    csc->m_Rows = new unsigned[nnz];
 
     unsigned* colPtrs = csc->m_ColPtrs;
     unsigned* rows = csc->m_Rows;
 
     colPtrs[0] = 0;
     for (unsigned j = 0; j < m_N; ++j)
-	{
-		colPtrs[j + 1] = colPtrs[j] + cols[j].size();
-	}
+    {
+        colPtrs[j + 1] = colPtrs[j] + cols[j].size();
+    }
 
     for (unsigned j = 0; j < m_N; ++j)
     {
         std::copy(cols[j].begin(), cols[j].end(), &rows[colPtrs[j]]);
     }
+
+    csc->m_IsSocial = (this->socialNetworkHelper() || (csc->averageDegree() > SOCIAL_THRESHOLD));
 
     return csc;
 }
