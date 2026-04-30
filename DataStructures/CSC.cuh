@@ -68,6 +68,7 @@ public:
 	bool checkSymmetry();
 	CSC* symmetrize();
 	CSC* transpose();
+	void constructEdgeListFromSubgraph(std::string filename, unsigned* sep, unsigned id);
 
 private:
 	bool socialNetworkHelper();
@@ -491,45 +492,49 @@ CSC* CSC::symmetrize()
     {
         for (unsigned nnz = m_ColPtrs[j]; nnz < m_ColPtrs[j + 1]; ++nnz)
         {
-            unsigned i = m_Rows[nnz];
-            cols[j].push_back(i);
-            if (i != j)
-            {
-                cols[i].push_back(j);
-            }
+			unsigned i = m_Rows[nnz];
+			if (i == j)
+			{
+				cols[i].emplace_back(j);
+			}
+			else if (i < j)
+			{
+				cols[i].emplace_back(j);
+				cols[j].emplace_back(i);
+			}
         }
     }
 
-    unsigned nnz = 0;
+	unsigned nnz = 0;
     for (unsigned j = 0; j < m_N; ++j)
     {
         auto& v = cols[j];
         std::sort(v.begin(), v.end());
         v.erase(std::unique(v.begin(), v.end()), v.end());
-        nnz += v.size();
+		nnz += v.size();
     }
 
     CSC* csc = new CSC;
     csc->m_N = m_N;
-    csc->m_NNZ = nnz;
-    csc->m_ColPtrs = new unsigned[m_N + 1];
-    csc->m_Rows = new unsigned[nnz];
+	csc->m_NNZ = nnz;
+	csc->m_ColPtrs = new unsigned[m_N + 1];
+	csc->m_Rows = new unsigned[nnz];
 
     unsigned* colPtrs = csc->m_ColPtrs;
     unsigned* rows = csc->m_Rows;
 
     colPtrs[0] = 0;
     for (unsigned j = 0; j < m_N; ++j)
-    {
-        colPtrs[j + 1] = colPtrs[j] + cols[j].size();
-    }
+	{
+		colPtrs[j + 1] = colPtrs[j] + cols[j].size();
+	}
 
     for (unsigned j = 0; j < m_N; ++j)
     {
         std::copy(cols[j].begin(), cols[j].end(), &rows[colPtrs[j]]);
     }
 
-    csc->m_IsSocial = (this->socialNetworkHelper() || (csc->averageDegree() > SOCIAL_THRESHOLD));
+	csc->m_IsSocial = (this->socialNetworkHelper() || (csc->averageDegree() > SOCIAL_THRESHOLD));
 
     return csc;
 }
@@ -1219,4 +1224,51 @@ bool CSC::permutationCheck(unsigned* inversePermutation)
 	delete[] check;
 	
 	return true;
+}
+
+void CSC::constructEdgeListFromSubgraph(std::string filename, unsigned* sep, unsigned id)
+{
+	std::ofstream file(filename);
+
+	unsigned n = 0;
+	unsigned nnz = 0;
+	unsigned* inversePermutation = new unsigned[m_N];
+	std::fill(inversePermutation, inversePermutation + m_N, UNSIGNED_MAX);
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		if (sep[j] == id)
+		{
+			if (inversePermutation[j] == UNSIGNED_MAX)
+			{
+				inversePermutation[j] = n++;
+			}
+			for (unsigned ptr = m_ColPtrs[j]; ptr < m_ColPtrs[j + 1]; ++ptr)
+			{
+				unsigned i = m_Rows[ptr];
+				if (sep[i] == id)
+				{
+					++nnz;
+				}
+			}
+		}
+	}
+
+	file << n << ' ' << n << ' ' << nnz << std::endl;
+
+	for (unsigned j = 0; j < m_N; ++j)
+	{
+		if (inversePermutation[j] != UNSIGNED_MAX)
+		{
+			for (unsigned ptr = m_ColPtrs[j]; ptr < m_ColPtrs[j + 1]; ++ptr)
+			{
+				unsigned i = m_Rows[ptr];
+				if (inversePermutation[i] != UNSIGNED_MAX)
+				{
+					file << inversePermutation[i] + 1 << ' ' << inversePermutation[j] + 1 << std::endl;
+				}
+			}	
+		}
+	}
+
+	delete[] inversePermutation;
 }

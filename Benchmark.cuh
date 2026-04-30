@@ -486,6 +486,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         //
 
         // kernel cleanup
+        delete[] result.components;
         delete csc_s;
         delete bvss_s;
         delete kernel;
