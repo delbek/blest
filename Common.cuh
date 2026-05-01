@@ -37,7 +37,7 @@ static bool FULL_PADDING;
 #define SOCIAL_THRESHOLD 18
 #define SLICE_TYPE unsigned long long
 #define SWITCHING_CONSTANT 10
-#define TASK_SIZE 256
+#define TASK_SIZE 8 // if closeness centrality gives GPU oom error, then reduce TASK_SIZE. If not, you may increase it somewhere to 256.
 #define K 128
 #define MASK unsigned
 #define WARP_SIZE 32

@@ -75,7 +75,6 @@ namespace BVSSClosenessKernels
         const unsigned warpID = threadID / WARP_SIZE;
         const unsigned laneID = threadID % WARP_SIZE;
 
-        const unsigned n = *nPtr;
         const unsigned paddedN = *paddedNPtr;
         const unsigned noRealSliceSets = *noRealSliceSetsPtr;
         const unsigned partitionSize = paddedN >> 3;

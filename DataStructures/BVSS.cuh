@@ -36,7 +36,7 @@ public:
     };
 
 public:
-    BVSS(unsigned sliceSize, unsigned noMasks, std::ofstream& file);
+    BVSS(unsigned sliceSize, unsigned noMasks);
     BVSS(const BVSS& other) = delete;
     BVSS(BVSS&& other) noexcept = delete;
     BVSS& operator=(const BVSS& other) = delete;
@@ -87,16 +87,12 @@ private:
     unsigned* m_RealPtrs;
     unsigned* m_RowIds;
     MASK* m_Masks;
-
-    // profiling data
-    std::ofstream& m_File;
 };
 
-BVSS::BVSS(unsigned sliceSize, unsigned noMasks, std::ofstream& file)
+BVSS::BVSS(unsigned sliceSize, unsigned noMasks)
 : BitMatrix(),
   m_SliceSize(sliceSize),
-  m_NoMasks(noMasks),
-  m_File(file)
+  m_NoMasks(noMasks)
 {
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)
     {
@@ -106,8 +102,6 @@ BVSS::BVSS(unsigned sliceSize, unsigned noMasks, std::ofstream& file)
     {
         throw std::runtime_error("Invalid noMasks provided.");
     }
-
-    m_File << "N\tNNZ\tUpdateDivergence\tSliceSize\t#RSet\t#VSet\t#Slices\tAvg(Slice/VSet)\tMin(Slice/VSet)\tMax(Slice/VSet)\tStd(Slice/Vset)\t#PaddedSlices\tUnpaddedSlices\tBitsTotal\tBitsUnpadded\tCompressionRatio" << std::endl;
 }
 
 BVSS::~BVSS()
@@ -529,8 +523,4 @@ void BVSS::printBVSSData()
     std::cout << "Total connectivity bits used by the unpadded part of the data structure: " << bitsUnpadded << std::endl;
     std::cout << "Compression ratio: " << compressionRatio << std::endl;
     std::cout << "Check: " << totalNumberOfEdgesCheck << std::endl;
-
-    fileFlush(m_File, m_N); fileFlush(m_File, totalNumberOfEdgesCheck); fileFlush(m_File, m_UpdateDivergence); fileFlush(m_File, m_SliceSize); fileFlush(m_File, m_NoRealSliceSets); fileFlush(m_File, m_NoVirtualSliceSets); fileFlush(m_File, m_NoSlices);
-    fileFlush(m_File, average); fileFlush(m_File, min); fileFlush(m_File, max); fileFlush(m_File, standardDeviation);
-    fileFlush(m_File, m_NoPaddedSlices); fileFlush(m_File, m_NoUnpaddedSlices); fileFlush(m_File, bitsTotal); fileFlush(m_File, bitsUnpadded); fileFlush(m_File, compressionRatio);
 }

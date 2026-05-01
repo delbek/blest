@@ -79,7 +79,6 @@ namespace BVSSMBFSKernels
         const unsigned warpID = threadID / WARP_SIZE;
         const unsigned laneID = threadID % WARP_SIZE;
 
-        const unsigned long long n = *nPtr;
         const unsigned long long paddedN = *paddedNPtr;
         const unsigned partitionSize = paddedN >> 3;
 
@@ -280,7 +279,6 @@ namespace BVSSMBFSKernels
         const unsigned warpID = threadID / WARP_SIZE;
         const unsigned laneID = threadID % WARP_SIZE;
 
-        const unsigned long long n = *nPtr;
         const unsigned long long paddedN = *paddedNPtr;
         const unsigned partitionSize = paddedN >> 3;
 
@@ -481,7 +479,6 @@ namespace BVSSMBFSKernels
         const unsigned warpID = threadID / WARP_SIZE;
         const unsigned laneID = threadID % WARP_SIZE;
 
-        const unsigned long long n = *nPtr;
         const unsigned long long paddedN = *paddedNPtr;
         const unsigned partitionSize = paddedN >> 3;
 
@@ -789,7 +786,6 @@ namespace BVSSMBFSKernels
         const unsigned warpID = threadID / WARP_SIZE;
         const unsigned laneID = threadID % WARP_SIZE;
 
-        const unsigned long long n = *nPtr;
         const unsigned long long paddedN = *paddedNPtr;
         const unsigned partitionSize = paddedN >> 3;
 

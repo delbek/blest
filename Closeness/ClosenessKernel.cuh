@@ -58,12 +58,19 @@ ClosenessResult ClosenessKernel::run()
 {
     int rank = 0;
     int worldSize = 1;
+
     #ifdef MPI_AVAILABLE
+    MPI_Init(nullptr, nullptr);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
     #endif
-
-    gpuErrchk(cudaSetDevice(0))
+ 
+    gpuErrchk(cudaSetDevice(0));
+    cudaDeviceProp prop;
+    int device;
+    cudaGetDevice(&device);
+    cudaGetDeviceProperties(&prop, device);
+    std::cout << "GPU: " << prop.name << std::endl;
 
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     CSC* csc = bvss->getCSR();

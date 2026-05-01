@@ -196,10 +196,6 @@ void Benchmark::main(const Config& config)
 
 double Benchmark::run(const Matrix& matrix, const Config& config)
 {
-    #ifdef MPI_AVAILABLE
-    MPI_Init(nullptr, nullptr);
-    #endif
-
     constexpr unsigned sliceSize = 8;
     constexpr unsigned noMasks = 32 / sliceSize;
     constexpr bool cscSave = true;
@@ -270,8 +266,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     // bvss
     double startBVSS = omp_get_wtime();
     std::cout << "BVSS construction started." << std::endl;
-    std::ofstream file(matrix.filename + ".csv");
-    BVSS* bvss = new BVSS(sliceSize, noMasks, file);
+    BVSS* bvss = new BVSS(sliceSize, noMasks);
     if (std::filesystem::exists(std::filesystem::path(bvssBinaryName)) && bvssLoad)
     {
         bvss->constructFromBinary(bvssBinaryName, csc);
@@ -451,8 +446,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     else if (kernelName == "WCC")
     {
         CSC* csc_s = csc->symmetrize();
-        std::ofstream file(matrix.filename + "_s.csv");
-        BVSS* bvss_s = new BVSS(sliceSize, noMasks, file);
+        BVSS* bvss_s = new BVSS(sliceSize, noMasks);
         bvss_s->constructFromCSCMatrix(csc_s);
 
         // kernel run
@@ -499,7 +493,6 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     
     // full cleanup
     delete bvss;
-    file.close();
     delete[] inversePermutation;
     delete[] permutation;
     delete csc;
