@@ -66,11 +66,6 @@ ClosenessResult ClosenessKernel::run()
     #endif
  
     gpuErrchk(cudaSetDevice(0));
-    cudaDeviceProp prop;
-    int device;
-    cudaGetDevice(&device);
-    cudaGetDeviceProperties(&prop, device);
-    std::cout << "GPU: " << prop.name << std::endl;
 
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     CSC* csc = bvss->getCSR();
@@ -460,7 +455,7 @@ ClosenessResult ClosenessKernel::run()
         if (pct > next)
         {
             next += 0.1;          
-            std::cout << "Rank: " << rank << " - Completed: " << pct * 100 << "%" << std::endl;
+            std::cout << "Rank: " << rank << " - Completed: " << pct * 100 << "%" << std::endl << std::flush;
         }
     }
     double end = omp_get_wtime();
