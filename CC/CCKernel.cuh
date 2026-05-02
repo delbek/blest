@@ -106,7 +106,6 @@ CCResult CCKernel::run()
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_NoSliceSets;
     SLICE_TYPE* d_SliceSetPtrs;

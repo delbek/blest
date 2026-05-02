@@ -39,6 +39,7 @@ public:
 
     std::vector<BFSResult> multiSourceRun(const std::vector<unsigned>& sources);
     BFSResult singleSourceRun(unsigned sourceVertex, bool switching);
+    bool shouldSwitch(unsigned testNo);
 
 private:
     BitMatrix* m_matrix;
@@ -61,20 +62,18 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
 
     BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
     bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
-    
+
     // tune
     bool switching = false;
     if (lazyKernel)
     {
-        BFSResult noSwitch = this->singleSourceRun(sources[0], false);
-        BFSResult withSwitch = this->singleSourceRun(sources[0], true);
-        if (withSwitch.time < noSwitch.time)
+        BFSKernel* kernel = new BFSKernel(m_matrix);
+        switching = kernel->shouldSwitch(3);
+        if (switching)
         {
-            switching = true;
             std::cout << "Switching-based kernel is enabled." << std::endl;
         }
-        delete[] noSwitch.levels;
-        delete[] withSwitch.levels;
+        delete kernel;
     }
     //
     
@@ -155,7 +154,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -489,7 +487,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -722,4 +719,26 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     */
 
     return result;
+}
+
+bool BFSKernel::shouldSwitch(unsigned testNo)
+{
+    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+
+    double noSwitchTime = 0;
+    double withSwitchTime = 0;
+    for (unsigned i = 0; i < testNo; ++i)
+    {
+        BFSResult noSwitch = this->singleSourceRun(rand(0, bvss->getN() - 1), false);
+        BFSResult withSwitch = this->singleSourceRun(rand(0, bvss->getN() - 1), true);
+        noSwitchTime += noSwitch.time;
+        withSwitchTime += withSwitch.time;
+        delete[] noSwitch.levels;
+        delete[] withSwitch.levels;
+    }
+    if (withSwitchTime < noSwitchTime)
+    {
+        return true;
+    }
+    return false;
 }

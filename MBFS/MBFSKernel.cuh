@@ -141,7 +141,6 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -373,7 +372,6 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -604,7 +602,6 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -852,15 +849,11 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
     if (lazyKernel)
     {
         BFSKernel* kernel = new BFSKernel(m_matrix);
-        BFSResult noSwitch = kernel->singleSourceRun(sourceVertices[0], false);
-        BFSResult withSwitch = kernel->singleSourceRun(sourceVertices[0], true);
-        if (withSwitch.time < noSwitch.time)
+        switching = kernel->shouldSwitch(10);
+        if (switching)
         {
-            switching = true;
             std::cout << "Switching-based kernel is enabled." << std::endl;
         }
-        delete[] noSwitch.levels;
-        delete[] withSwitch.levels;
         delete kernel;
     }
     //
@@ -894,7 +887,6 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
 
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;

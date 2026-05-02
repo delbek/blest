@@ -112,15 +112,11 @@ ClosenessResult ClosenessKernel::run()
     if (lazyKernel)
     {
         BFSKernel* kernel = new BFSKernel(m_matrix);
-        BFSResult noSwitch = kernel->singleSourceRun(0, false);
-        BFSResult withSwitch = kernel->singleSourceRun(0, true);
-        if (withSwitch.time < noSwitch.time)
+        switching = kernel->shouldSwitch(20);
+        if (switching)
         {
-            switching = true;
             std::cout << "Switching-based kernel is enabled." << std::endl;
         }
-        delete[] noSwitch.levels;
-        delete[] withSwitch.levels;
         delete kernel;
     }
     //
@@ -154,7 +150,6 @@ ClosenessResult ClosenessKernel::run()
                                                 kernelPtr,
                                                 allocateSharedMemory,
                                                 0))
-    std::cout << "Total number of threads: " << gridSize * blockSize << std::endl;
                                                     
     unsigned* d_RowPtrs;
     unsigned* d_ColIds;
@@ -232,6 +227,8 @@ ClosenessResult ClosenessKernel::run()
     std::vector<unsigned> initialVset;
     std::unordered_map<unsigned, ulonglong4_32a> rsets;
     std::unordered_map<unsigned, ulonglong4_32a> vertices;
+
+    double next = 0.1;
 
     double start = omp_get_wtime();
     for (unsigned taskNo = 0; taskNo < noTasks; ++taskNo)
@@ -458,6 +455,13 @@ ClosenessResult ClosenessKernel::run()
         delete[] levelTime;
         //
         */
+
+        double pct = static_cast<double>(taskNo + 1) / noTasks;
+        if (pct > next)
+        {
+            next += 0.1;          
+            std::cout << "Rank: " << rank << " - Completed: " << pct * 100 << "%" << std::endl;
+        }
     }
     double end = omp_get_wtime();
 
