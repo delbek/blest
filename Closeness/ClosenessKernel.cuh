@@ -169,11 +169,6 @@ ClosenessResult ClosenessKernel::run()
     unsigned long long* d_Far;
     ulonglong4_32a* d_ActiveRSets;
     bool* d_DirtyRSets;
-    /*
-    // profiling
-    unsigned long long* d_LevelTime;
-    //
-    */
 
     // data structure
     gpuErrchk(cudaMalloc(&d_N, sizeof(unsigned)))
@@ -211,11 +206,6 @@ ClosenessResult ClosenessKernel::run()
     gpuErrchk(cudaMalloc(&d_Far, sizeof(unsigned long long) * paddedN))
     gpuErrchk(cudaMalloc(&d_ActiveRSets, sizeof(ulonglong4_32a) * noRealSliceSets * taskSize))
     gpuErrchk(cudaMalloc(&d_DirtyRSets, sizeof(bool) * noRealSliceSets))
-    /*
-    // profiling
-    gpuErrchk(cudaMalloc(&d_LevelTime, sizeof(unsigned long long) * n))
-    //
-    */
 
     gpuErrchk(cudaMemset(d_Far, 0, sizeof(unsigned long long) * paddedN))
 
@@ -239,12 +229,6 @@ ClosenessResult ClosenessKernel::run()
         initialVset.clear();
         initialVset.reserve(256 * taskSize);
         //
-
-        /*
-        // profiling
-        gpuErrchk(cudaMemset(d_LevelTime, 0, sizeof(unsigned long long) * n))
-        //
-        */
 
         unsigned chunkStart = localChunkBegin + taskNo * taskSize;
         unsigned chunkEnd = std::min(localChunkEnd, chunkStart + taskSize);
@@ -420,11 +404,6 @@ ClosenessResult ClosenessKernel::run()
             (void*)&d_SparseFrontierNextIds,
             (void*)&d_UnvisitedNextSize,
             (void*)&d_FrontierNextSize
-            /*
-            // profiling
-            (void*)&d_LevelTime
-            //
-            */
         };
 
         double kernelStart = omp_get_wtime();
@@ -437,19 +416,6 @@ ClosenessResult ClosenessKernel::run()
             0))
         gpuErrchk(cudaPeekAtLastError())
         gpuErrchk(cudaDeviceSynchronize())
-
-        /*
-        // profiling
-        unsigned long long* levelTime = new unsigned long long[n];
-        gpuErrchk(cudaMemcpy(levelTime, d_LevelTime, sizeof(unsigned long long) * n, cudaMemcpyDeviceToHost))
-        for (unsigned i = 0; i < n; ++i)
-        {
-            if (levelTime[i + 1] == 0) break;
-            std::cout << "Level: " <<  i + 1 << " took: " << levelTime[i + 1] - levelTime[i] << std::endl;
-        }
-        delete[] levelTime;
-        //
-        */
 
         double pct = static_cast<double>(taskNo + 1) / noTasks;
         if (pct > next)
@@ -504,11 +470,6 @@ ClosenessResult ClosenessKernel::run()
     gpuErrchk(cudaFree(d_Far))
     gpuErrchk(cudaFree(d_ActiveRSets))
     gpuErrchk(cudaFree(d_DirtyRSets))
-    /*
-    // profiling
-    gpuErrchk(cudaFree(d_LevelTime))
-    //
-    */
 
     return result;
 }

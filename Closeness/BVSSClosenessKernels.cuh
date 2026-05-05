@@ -538,11 +538,6 @@ namespace BVSSClosenessKernels
                                                                                         unsigned*                           __restrict__ sparseFrontierNextIds,
                                                                                         unsigned*                           __restrict__ unvisitedNextSizePtr,
                                                                                         unsigned*                           __restrict__ frontierNextSizePtr
-                                                                                        /*
-                                                                                        // profiling
-                                                                                        unsigned long long*         const   __restrict__ levelTime
-                                                                                        //
-                                                                                        */
                                                                                         )
     {
         auto warp = coalesced_threads();
@@ -564,26 +559,12 @@ namespace BVSSClosenessKernels
 
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
 
-        /*
-        if (threadID == 0)
-        {
-            levelTime[levelCount] = getTime();
-        }
-        grid.sync();
-        */
-
         bool cont = true;
         while (cont)
         {
             ++levelCount;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
             unsigned currentUnvisitedSize = *unvisitedCurrentSizePtr;
-            /*
-            if (threadID == 0)
-            {
-                printf("Level: %u - Current unvisited: %u - Current frontier: %u - Pull: %u\n", levelCount, currentUnvisitedSize, currentFrontierSize, currentUnvisitedSize < currentFrontierSize * TASK_SIZE * 2);
-            }
-            */
             if (currentUnvisitedSize < currentFrontierSize * TASK_SIZE * 2)
             {
                 for (unsigned u = threadID; u < n; u += noThreads)
@@ -1023,13 +1004,6 @@ namespace BVSSClosenessKernels
             swap<unsigned>(unvisitedCurrentSizePtr, unvisitedNextSizePtr);
             swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
             grid.sync();
-            /*
-            if (threadID == 0)
-            {
-                levelTime[levelCount] = getTime();
-            }
-            grid.sync();
-            */
         }
     }
 };

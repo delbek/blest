@@ -50,11 +50,6 @@ namespace BVSSBFSKernels
                                                                     unsigned*               __restrict__ sparseFrontierNextIds,
                                                                     unsigned*               __restrict__ unvisitedNextSizePtr,
                                                                     unsigned*               __restrict__ frontierNextSizePtr
-                                                                    /*
-                                                                    // profiling
-                                                                    unsigned long long* levelTime
-                                                                    //
-                                                                    */
                                                                     )
     {
         auto warp = coalesced_threads();
@@ -72,26 +67,12 @@ namespace BVSSBFSKernels
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
         unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
 
-        /*
-        if (threadID == 0)
-        {
-            levelTime[levelCount] = getTime();
-        }
-        grid.sync();
-        */
-
         bool cont = true;
         while (cont)
         {
             ++levelCount;
             unsigned currentUnvisitedSize = *unvisitedCurrentSizePtr;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
-            /*
-            if (threadID == 0)
-            {
-                printf("Current unvisited: %u - Current frontier: %u - Ratio: %f\n", currentUnvisitedSize, currentFrontierSize, double(currentUnvisitedSize) / currentFrontierSize);
-            }
-            */
             if (currentUnvisitedSize < currentFrontierSize * SWITCHING_CONSTANT)
             {
                 for (unsigned i = warpID; i < noWords; i += noWarps)
@@ -264,13 +245,6 @@ namespace BVSSBFSKernels
             swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
             swap<unsigned>(unvisitedCurrentSizePtr, unvisitedNextSizePtr);
             grid.sync();
-            /*
-            if (threadID == 0)
-            {
-                levelTime[levelCount] = getTime();
-            }
-            grid.sync();
-            */
         }
     }
 
@@ -296,11 +270,6 @@ namespace BVSSBFSKernels
                                                                             unsigned*               __restrict__ sparseFrontierNextIds,
                                                                             unsigned*               __restrict__ unvisitedNextSizePtr,
                                                                             unsigned*               __restrict__ frontierNextSizePtr
-                                                                            /*
-                                                                            // profiling
-                                                                            unsigned long long* levelTime
-                                                                            //
-                                                                            */
                                                                             )
     {
         auto warp = coalesced_threads();
@@ -318,26 +287,12 @@ namespace BVSSBFSKernels
         const uint4* row4Ids = reinterpret_cast<const uint4*>(rowIds);
         unsigned char* frontierSlice = reinterpret_cast<unsigned char*>(frontier);
 
-        /*
-        if (threadID == 0)
-        {
-            levelTime[levelCount] = getTime();
-        }
-        grid.sync();
-        */
-
         bool cont = true;
         while (cont)
         {
             ++levelCount;
             unsigned currentUnvisitedSize = *unvisitedCurrentSizePtr;
             unsigned currentFrontierSize = *frontierCurrentSizePtr;
-            /*
-            if (threadID == 0)
-            {
-                printf("Current unvisited: %u - Current frontier: %u - Ratio: %f\n", currentUnvisitedSize, currentFrontierSize, double(currentUnvisitedSize) / currentFrontierSize);
-            }
-            */
             if (currentUnvisitedSize < currentFrontierSize * SWITCHING_CONSTANT)
             {
                 for (unsigned i = warpID; i < noWords; i += noWarps)
@@ -502,13 +457,6 @@ namespace BVSSBFSKernels
             swap<unsigned>(frontierCurrentSizePtr, frontierNextSizePtr);
             swap<unsigned>(unvisitedCurrentSizePtr, unvisitedNextSizePtr);
             grid.sync();
-            /*
-            if (threadID == 0)
-            {
-                levelTime[levelCount] = getTime();
-            }
-            grid.sync();
-            */
         }
     }
 

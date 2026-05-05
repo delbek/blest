@@ -68,7 +68,7 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
     if (lazyKernel)
     {
         BFSKernel* kernel = new BFSKernel(m_matrix);
-        switching = kernel->shouldSwitch(3);
+        switching = kernel->shouldSwitch(5);
         if (switching)
         {
             std::cout << "Switching-based kernel is enabled." << std::endl;
@@ -244,16 +244,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
         gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
-        /*
-        // profiling
-        unsigned long long* levelTime = new unsigned long long[n];
-        std::fill(levelTime, levelTime + n, UNSIGNED_LONG_MAX);
-        unsigned long long* d_LevelTime;
-        gpuErrchk(cudaMalloc(&d_LevelTime, sizeof(unsigned long long) * n))
-        gpuErrchk(cudaMemcpy(d_LevelTime, levelTime, sizeof(unsigned long long) * n, cudaMemcpyHostToDevice))
-        //
-        */
-
         double start;
         if (!lazyKernel)
         {
@@ -308,11 +298,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
                     (void*)&d_SparseFrontierNextIds,
                     (void*)&d_UnvisitedNextSize,
                     (void*)&d_FrontierNextSize
-                    /*
-                    // profiling
-                    (void*)&d_LevelTime
-                    //
-                    */
                 };
 
                 start = omp_get_wtime();
@@ -361,19 +346,6 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
 
         gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
         results.emplace_back(result);
-
-        /*
-        // profiling
-        gpuErrchk(cudaMemcpy(levelTime, d_LevelTime, sizeof(unsigned long long) * n, cudaMemcpyDeviceToHost))
-        for (unsigned i = 1; i < n; ++i)
-        {
-            if (levelTime[i] == UNSIGNED_LONG_MAX) break;
-            std::cout << "Level " << i - 1 << " took: " << levelTime[i] - levelTime[i - 1] << std::endl;
-        }
-        delete[] levelTime;
-        gpuErrchk(cudaFree(d_LevelTime))
-        //
-        */
     }
 
     gpuErrchk(cudaFree(d_RowPtrs))
@@ -569,16 +541,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     gpuErrchk(cudaMemcpy(d_Visited + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
     gpuErrchk(cudaMemcpy(d_VisitedNext + word, &temp, sizeof(unsigned), cudaMemcpyHostToDevice))
 
-    /*
-    // profiling
-    unsigned long long* levelTime = new unsigned long long[n];
-    std::fill(levelTime, levelTime + n, UNSIGNED_LONG_MAX);
-    unsigned long long* d_LevelTime;
-    gpuErrchk(cudaMalloc(&d_LevelTime, sizeof(unsigned long long) * n))
-    gpuErrchk(cudaMemcpy(d_LevelTime, levelTime, sizeof(unsigned long long) * n, cudaMemcpyHostToDevice))
-    //
-    */
-
     double start;
     if (!lazyKernel)
     {
@@ -633,11 +595,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
                 (void*)&d_SparseFrontierNextIds,
                 (void*)&d_UnvisitedNextSize,
                 (void*)&d_FrontierNextSize
-                /*
-                // profiling
-                (void*)&d_LevelTime
-                //
-                */
             };
 
             start = omp_get_wtime();
@@ -683,6 +640,7 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     double end = omp_get_wtime();
 
     result.time = (end - start);
+    gpuErrchk(cudaMemcpy(result.levels, d_Levels, sizeof(unsigned) * n, cudaMemcpyDeviceToHost))
 
     gpuErrchk(cudaFree(d_RowPtrs))
     gpuErrchk(cudaFree(d_ColIds))
@@ -704,19 +662,6 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     gpuErrchk(cudaFree(d_Visited))
     gpuErrchk(cudaFree(d_Levels))
     gpuErrchk(cudaFree(d_FrontierNext))
-
-    /*
-    // profiling
-    gpuErrchk(cudaMemcpy(levelTime, d_LevelTime, sizeof(unsigned long long) * n, cudaMemcpyDeviceToHost))
-    for (unsigned i = 1; i < n; ++i)
-    {
-        if (levelTime[i] == UNSIGNED_LONG_MAX) break;
-        std::cout << "Level: " << i - 1 << " took: " << levelTime[i] - levelTime[i - 1] << std::endl;
-    }
-    delete[] levelTime;
-    gpuErrchk(cudaFree(d_LevelTime))
-    //
-    */
 
     return result;
 }
