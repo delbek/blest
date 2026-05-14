@@ -429,7 +429,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
                 ++noComponents;
                 if (marker[i] > 100)
                 {
-                    std::cout << "A large component found - Size: " << marker[i] << std::endl;
+                    std::cout << "A large component [ID: " << i << "] found - Size: " << marker[i] << std::endl;
                 }
             }
         }
@@ -470,7 +470,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
                 ++noComponents;
                 if (marker[i] > 100)
                 {
-                    std::cout << "A large component found - Size: " << marker[i] << std::endl;
+                    std::cout << "A large component [ID: " << i << "] found - Size: " << marker[i] << std::endl;
                 }
             }
         }
