@@ -81,7 +81,7 @@ private:
 	unsigned* gorderWithJackard(unsigned sliceSize, unsigned windowSize);
 	unsigned* gorder(unsigned sliceSize);
 	unsigned* degreeSort(bool ascending = true);
-	unsigned findPseudoPeripheralNode(CSC* csc, unsigned startNode);
+	unsigned findPseudoPeripheralNode(CSC* csc, unsigned noTrials, unsigned startNode);
 	unsigned* rcm();
 	unsigned* soloVertexPermutation();
 	
@@ -1008,7 +1008,7 @@ unsigned* CSC::degreeSort(bool ascending)
 	return inversePermutation;
 }
 
-unsigned CSC::findPseudoPeripheralNode(CSC* csc, unsigned startNode)
+unsigned CSC::findPseudoPeripheralNode(CSC* csc, unsigned noTrials, unsigned startNode)
 {
 	unsigned* ptrs = csc->getColPtrs();
 	unsigned* inds = csc->getRows();
@@ -1021,18 +1021,19 @@ unsigned CSC::findPseudoPeripheralNode(CSC* csc, unsigned startNode)
 	unsigned maxLevel = 0;
 	unsigned trial = 0;
 	unsigned marker = 1;
-	while (trial < 10)
+	while (trial < noTrials)
 	{
 		++marker;
 
-		q[0] = startNode;
-		visited[startNode] = marker;
-		unsigned qe = 1;
 		unsigned qs = 0;
+		unsigned qe = 0;
 
-		unsigned levelStart = 0;
+		q[qe++] = startNode;
+		visited[startNode] = marker;
+
+		unsigned levelStart = qs;
 		unsigned levelEnd = qe;
-		unsigned levelid = 1;
+		unsigned level = 1;
 		
 		while (qs < qe)
 		{
@@ -1051,18 +1052,18 @@ unsigned CSC::findPseudoPeripheralNode(CSC* csc, unsigned startNode)
 			{
 			  levelStart = qs;
 			  levelEnd = qe;
-			  levelid++;
+			  level++;
 			}
 		}
-		if (levelid == maxLevel)
+		if (level == maxLevel)
 		{
 			trial++; 
 		}
-		else 
+		else
 		{
 			trial = 0;
 		}
-		maxLevel = levelid;
+		maxLevel = level;
 		unsigned nextStart = q[levelStart + (rand() % (levelEnd - levelStart))];
 		startNode = nextStart;
 	}
@@ -1112,7 +1113,7 @@ unsigned* CSC::rcm()
 	{
 		if (visited[i] == 1) continue;
 		
-		unsigned start = this->findPseudoPeripheralNode(csc, i);
+		unsigned start = this->findPseudoPeripheralNode(csc, 10, i);
 		unsigned qs = 0;
 		unsigned qe = 0;
 		q[qe++] = start;

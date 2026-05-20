@@ -255,3 +255,40 @@ static bool isSocialDegreeDistribution(const std::vector<unsigned> &deg)
 
     return false;
 }
+
+inline unsigned long long printMemoryFootprint(unsigned long long n, unsigned long long nnz, unsigned long long paddedN, unsigned long long Ns, unsigned long long Nv, unsigned long long noSlices, unsigned long long sigma, unsigned long long numSources)
+{
+    unsigned long long total = 0;
+
+    unsigned long long scalars = 16 + 5 * 4;
+    total += scalars;
+    std::cout << "[Scalars] " << scalars / 1e9 << " GB\n";
+
+    unsigned long long csr = 4 * (n + 1) + 4 * nnz;
+    total += csr;
+    std::cout << "[CSR] " << csr / 1e9 << " GB\n";
+
+    unsigned long long bvss = 8 * (Nv + 1) + 4 * Nv + 4 * (Ns + 1) + 4 * noSlices + 4 * (noSlices / sigma);
+    total += bvss;
+    std::cout << "[BVSS] " << bvss / 1e9 << " GB\n";
+
+    unsigned long long frontier = 32ULL * paddedN * 3;
+    total += frontier;
+    std::cout << "[Frontier/Visited] " << frontier / 1e9 << " GB\n";
+
+    unsigned long long queues = 4 * Nv * 2;
+    total += queues;
+    std::cout << "[Sparse Queues] " << queues / 1e9 << " GB\n";
+
+    unsigned long long levels = 4ULL * paddedN * numSources;
+    total += levels;
+    std::cout << "[Level Array] " << levels / 1e9 << " GB\n";
+
+    unsigned long long tracking = 32ULL * Ns + Ns;
+    total += tracking;
+    std::cout << "[Active/Dirty Sets] " << tracking / 1e9 << " GB\n";
+
+    std::cout << "[Total] " << total / 1e9 << " GB\n";
+
+    return total;
+}

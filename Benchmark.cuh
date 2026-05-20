@@ -73,7 +73,7 @@ public:
     void main(const Config& config);
     double run(const Matrix& matrix, const Config& config);
     std::vector<unsigned> constructSourceVertices(std::string filename, unsigned* inversePermutation);
-    std::vector<unsigned> constructGreatSourceVertices(std::string filename, BFSKernel* kernel, unsigned no, unsigned lower, unsigned upper, unsigned* permutation);
+    std::vector<unsigned> constructGreatSourceVertices(BFSKernel* kernel, unsigned no, unsigned lower, unsigned upper, unsigned* permutation, std::string filename = "");
 };
 
 std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, unsigned* inversePermutation)
@@ -96,7 +96,7 @@ std::vector<unsigned> Benchmark::constructSourceVertices(std::string filename, u
     return sources;
 }
 
-std::vector<unsigned> Benchmark::constructGreatSourceVertices(std::string filename, BFSKernel* kernel, unsigned no, unsigned lower, unsigned upper, unsigned* permutation)
+std::vector<unsigned> Benchmark::constructGreatSourceVertices(BFSKernel* kernel, unsigned no, unsigned lower, unsigned upper, unsigned* permutation, std::string filename)
 {
     const double FACTOR = 0.2;
     const unsigned ITER = 5;
@@ -140,12 +140,15 @@ std::vector<unsigned> Benchmark::constructGreatSourceVertices(std::string filena
             break;
         }
     }
-    std::ofstream file(filename);
-    for (unsigned i = 0; i < no; ++i)
+    if (!filename.empty())
     {
-        file << permutation[sources[i]] << std::endl;
+        std::ofstream file(filename);
+        for (unsigned i = 0; i < no; ++i)
+        {
+            file << permutation[sources[i]] << std::endl;
+        }
+        file.close();
     }
-    file.close();
     return sources;
 }
 
@@ -215,7 +218,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
 
     // csc
     double startCSC = omp_get_wtime();
-    std::cout << "CSC construction started." << std::endl; 
+    std::cout << "CSC construction started." << std::endl;
     CSC* csc;
     if (std::filesystem::exists(std::filesystem::path(cscBinaryName)) && cscLoad)
     {
@@ -234,7 +237,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     std::cout << "CSC construction completed in: " << endCSC - startCSC << " seconds." << std::endl;
     //
 
-    if (csc->isSocialNetwork()) 
+    if (csc->isSocialNetwork())
     {
         FULL_PADDING = false;
     }
@@ -319,7 +322,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
                     levelCount = std::max(levelCount, newLevels[old]);
                 }
             }
-            std::cout << "Source: " << result.sourceVertex << " - Visited: " << visitedCount << " - Level: " << levelCount << " - Time (ms): " << result.time * 1000 << std::endl;
+            std::cout << "Source: " << result.sourceVertex << " - Visited: " << visitedCount << " - Depth: " << levelCount << " - Time (ms): " << result.time * 1000 << std::endl;
             delete[] result.levels;
             result.levels = newLevels;
         }
@@ -362,7 +365,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
                     levelCount = std::max(levelCount, newLevels[f * csc->getN() + old]);
                 }
             }
-            std::cout << "Source: " << result.sources[f] << " - Visited: " << visitedCount << " - Level: " << levelCount << std::endl;
+            std::cout << "Source: " << result.sources[f] << " - Visited: " << visitedCount << " - Depth: " << levelCount << std::endl;
         }
         delete[] result.levels;
         result.levels = newLevels;
@@ -389,12 +392,18 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
         for (unsigned old = 0; old < csc->getN(); ++old)
         {
             newDistances[old] = result.distances[getVertexIndex(inversePermutation[old], partitionSize)];
-            std::cout << "Vertex: " << old << " - Far: " << newDistances[old] << std::endl;
         }
         delete[] result.distances;
         result.distances = newDistances;
         total = result.time;
         //
+
+        std::ofstream outCloseness(matrix.filename + "_closeness_results.txt");
+        for (unsigned i = 0; i < csc->getN(); ++i)
+        {
+            outCloseness << result.distances[i] << std::endl;
+        }
+        outCloseness.close();
 
         // kernel cleanup
         delete[] result.distances;
@@ -405,7 +414,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     {
         if (csc->checkSymmetry() == false)
         {
-            throw std::runtime_error("Connected components are not well-defined for directed graphs. Try weakly connected components.");
+            throw std::runtime_error("Connected components are not well-defined for directed graphs. Try weakly-connected components.");
         }
 
         // kernel run
@@ -427,7 +436,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
             if (marker[i] != 0)
             {
                 ++noComponents;
-                if (marker[i] > 100)
+                if (marker[i] >= 100)
                 {
                     std::cout << "A large component [ID: " << i << "] found - Size: " << marker[i] << std::endl;
                 }
