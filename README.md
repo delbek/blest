@@ -59,9 +59,9 @@ Please see the paper:
 
      | Kernel      | Description |
      |-------------|-------------|
-     | `BFS`       | Executes single-source BFS sequentially for each node listed in `<graph_name>.txt` under `-d`. The file may contain any number of sources. |
+     | `BFS`       | Executes single-source BFS **sequentially** for each node listed in `<graph_name>.txt` under `-d`. The file may contain any number of sources. |
      | `MBFS`      | Executes multi-source BFS **concurrently** for all sources listed in `<graph_name>.txt` under `-d`. At most 256 sources are supported. |
-     | `Closeness` | Computes the far values (distances) required for closeness centrality for all nodes. Results are written to `<graph_name>_closeness_results.txt` under `-d`. |
+     | `Closeness` | Computes the far values (distances) required for computing closeness centrality for all nodes. Results are written to `<graph_name>_closeness_results.txt` under `-d`. |
      | `CC`        | Finds connected components of the graph. The graph must be undirected. |
      | `WCC`       | Finds weakly connected components of the graph. |
 
