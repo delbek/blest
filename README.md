@@ -2,16 +2,29 @@
 
 BLEST is a state-of-the-art library to execute Breadth First Search (BFS) on modern GPUs. Its novel data structure, combined with unprecedented compute mechanics, delivers immense performance across massive real-world graphs on massively parallel processors, making it one of the most competitive BFS frameworks ever proposed to date.
 
-Please see the paper:
+Please see the papers:
 
 ```bibtex
-@article{Elbek2025BLEST,
-  title   = {BLEST: Blazingly Efficient BFS using Tensor Cores},
+@inproceedings{elbek2026blest,
+  author    = {Elbek, Deniz and Kaya, Kamer},
+  title     = {BLEST: Blazingly Efficient BFS using Tensor Cores},
+  booktitle = {Proceedings of the 40th ACM International Conference on Supercomputing},
+  series    = {ICS '26},
+  year      = {2026},
+  pages     = {714--726},
+  doi       = {10.1145/3797905.3800531},
+  url       = {https://dl.acm.org/doi/10.1145/3797905.3800531},
+  publisher = {ACM},
+  address   = {New York, NY, USA}
+}
+
+@article{elbek2026bfs,
   author  = {Elbek, Deniz and Kaya, Kamer},
-  journal = {arXiv preprint arXiv:2512.21967},
-  year    = {2025},
-  doi     = {10.48550/arXiv.2512.21967},
-  url     = {https://www.arxiv.org/abs/2512.21967}
+  title   = {Graph Traversal on Tensor Cores: A BFS Framework for Modern GPUs},
+  journal = {arXiv preprint arXiv:2606.05081},
+  year    = {2026},
+  doi     = {10.48550/arXiv.2606.05081},
+  url     = {https://arxiv.org/abs/2606.05081}
 }
 ```
 
@@ -53,7 +66,7 @@ Please see the paper:
 
    - `-j`: Jaccard enabled (0 or 1) -- We recommend this to be set to 1
 
-   - `-w`: Window size (an unsigned integer > 0) -- We recommend this to be set at least to 65536
+   - `-w`: Window size (an unsigned integer > 0 and a multiple of 8) -- We recommend this to be set at least to 65536
 
    - `-k`: Kernel to execute. Supported values:
 
