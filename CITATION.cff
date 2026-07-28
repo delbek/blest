@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the corresponding paper."
+authors:
+  - family-names: "Elbek"
+    given-names: "Deniz"
+  - family-names: "Kaya"
+    given-names: "Kamer"
+title: "BLEST: Blazingly Efficient BFS using Tensor Cores"
+type: software
+url: "https://github.com/delbek/blest"
+
+preferred-citation:
+  type: conference-paper
+  authors:
+    - family-names: "Elbek"
+      given-names: "Deniz"
+    - family-names: "Kaya"
+      given-names: "Kamer"
+  title: "BLEST: Blazingly Efficient BFS using Tensor Cores"
+  collection-title: "Proceedings of the 40th ACM International Conference on Supercomputing"
+  conference:
+    name: "ICS '26"
+  year: 2026
+  start: 714
+  end: 726
+  doi: "10.1145/3797905.3800531"
+  url: "https://dl.acm.org/doi/10.1145/3797905.3800531"
+  publisher:
+    name: "ACM"
+    address: "New York, NY, USA"
