@@ -510,7 +510,7 @@ CSC* CSC::symmetrize()
 			{
 				cols[i].emplace_back(j);
 			}
-			else if (i < j)
+			else
 			{
 				cols[i].emplace_back(j);
 				cols[j].emplace_back(i);
@@ -1046,7 +1046,7 @@ unsigned CSC::findPseudoPeripheralNode(CSC* csc, unsigned noTrials, unsigned sta
 
 		unsigned levelStart = qs;
 		unsigned levelEnd = qe;
-		unsigned level = 1;
+		unsigned level = 0;
 		
 		while (qs < qe)
 		{
@@ -1063,20 +1063,20 @@ unsigned CSC::findPseudoPeripheralNode(CSC* csc, unsigned noTrials, unsigned sta
 
 			if (qs == levelEnd && qs < qe)
 			{
-			  levelStart = qs;
-			  levelEnd = qe;
-			  level++;
+				++level;
+				levelStart = qs;
+				levelEnd = qe;
 			}
 		}
-		if (level == maxLevel)
+		if (level > maxLevel)
 		{
-			trial++; 
+			maxLevel = level;
+			trial = 0;
 		}
 		else
 		{
-			trial = 0;
+			trial++;
 		}
-		maxLevel = level;
 		unsigned nextStart = q[levelStart + (rand() % (levelEnd - levelStart))];
 		startNode = nextStart;
 	}
@@ -1126,7 +1126,7 @@ unsigned* CSC::rcm()
 	{
 		if (visited[i] == 1) continue;
 		
-		unsigned start = this->findPseudoPeripheralNode(csc, 10, i);
+		unsigned start = this->findPseudoPeripheralNode(csc, 20, i);
 		unsigned qs = 0;
 		unsigned qe = 0;
 		q[qe++] = start;
