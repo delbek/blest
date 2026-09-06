@@ -9,3 +9,4 @@ res/
 *.mtx.csv
 run_cluster.sh
 todo
+experiments/

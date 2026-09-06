@@ -93,12 +93,12 @@ __host__ __device__ __forceinline__ unsigned getVertexIndex(const unsigned& vert
 }
 
 template <class T>
-static void fileFlush(std::ofstream& file, T el)
+inline void fileFlush(std::ofstream& file, T el)
 {
     file << "'" << el << '\t';
 }
 
-static unsigned* chainPermutations(unsigned n, unsigned* perm1, unsigned* perm2)
+unsigned* chainPermutations(unsigned n, unsigned* perm1, unsigned* perm2)
 {
     unsigned* chained = new unsigned[n];
     for (unsigned i = 0; i < n; ++i)
@@ -117,7 +117,7 @@ unsigned rand(unsigned min, unsigned max)
     return dist(gen);
 }
 
-static bool isSocialDegreeDistribution(const std::vector<unsigned> &deg)
+bool isSocialDegreeDistribution(const std::vector<unsigned> &deg)
 {
     unsigned n = static_cast<unsigned>(deg.size());
     if (n == 0)
@@ -269,7 +269,7 @@ static bool isSocialDegreeDistribution(const std::vector<unsigned> &deg)
     return false;
 }
 
-inline unsigned long long printMemoryFootprint(unsigned long long n, unsigned long long nnz, unsigned long long paddedN, unsigned long long Ns, unsigned long long Nv, unsigned long long noSlices, unsigned long long sigma, unsigned long long numSources)
+unsigned long long printMemoryFootprint(unsigned long long n, unsigned long long nnz, unsigned long long paddedN, unsigned long long Ns, unsigned long long Nv, unsigned long long noSlices, unsigned long long sigma, unsigned long long numSources)
 {
     unsigned long long total = 0;
 

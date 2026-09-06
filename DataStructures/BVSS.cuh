@@ -29,7 +29,6 @@
 
 #pragma once
 
-#include "BitMatrix.cuh"
 #include "CSC.cuh"
 #include <cmath>
 #include <stdexcept>
@@ -38,7 +37,7 @@
 #include <unordered_map>
 #include <map>
 
-class BVSS: public BitMatrix
+class BVSS
 {
 public:
     struct VSet
@@ -103,8 +102,7 @@ private:
 };
 
 BVSS::BVSS(unsigned sliceSize, unsigned noMasks)
-: BitMatrix(),
-  m_SliceSize(sliceSize),
+: m_SliceSize(sliceSize),
   m_NoMasks(noMasks)
 {
     if (m_SliceSize > MASK_BITS || K % m_SliceSize != 0)

@@ -43,7 +43,7 @@ struct BFSResult
 class BFSKernel
 {
 public:
-    BFSKernel(BitMatrix* matrix);
+    BFSKernel(BVSS* matrix);
     BFSKernel(const BFSKernel& other) = delete;
     BFSKernel(BFSKernel&& other) noexcept = delete;
     BFSKernel& operator=(const BFSKernel& other) = delete;
@@ -55,10 +55,10 @@ public:
     bool shouldSwitch(unsigned testNo);
 
 private:
-    BitMatrix* m_matrix;
+    BVSS* m_matrix;
 };
 
-BFSKernel::BFSKernel(BitMatrix* matrix)
+BFSKernel::BFSKernel(BVSS* matrix)
 : m_matrix(matrix)
 {
 
@@ -73,7 +73,7 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
 
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     bool lazyKernel = (bvss->getUpdateDivergence() > LAZY_KERNEL_THRESHOLD);
 
     // tune
@@ -238,6 +238,7 @@ std::vector<BFSResult> BFSKernel::multiSourceRun(const std::vector<unsigned>& so
         gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
         gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
         gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
+        gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
 
         std::vector<unsigned> initialVset;
         for (unsigned vset = realPtrs[sourceVertex / sliceSize]; vset < realPtrs[sourceVertex / sliceSize + 1]; ++vset)
@@ -389,7 +390,7 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
 {
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     CSC* csc = bvss->getCSR();
     unsigned n = bvss->getN();
     unsigned sliceSize = bvss->getSliceSize();
@@ -534,6 +535,7 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
     gpuErrchk(cudaMemset(d_VisitedNext, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_Visited, 0, sizeof(unsigned) * noWords))
     gpuErrchk(cudaMemset(d_FrontierNext, 0, sizeof(unsigned) * noWords))
+    gpuErrchk(cudaMemset(d_FrontierNextSize, 0, sizeof(unsigned)))
     gpuErrchk(cudaMemcpy(d_Levels, result.levels, sizeof(unsigned) * n, cudaMemcpyHostToDevice))
 
     std::vector<unsigned> initialVset;
@@ -681,7 +683,7 @@ BFSResult BFSKernel::singleSourceRun(unsigned sourceVertex, bool switching)
 
 bool BFSKernel::shouldSwitch(unsigned testNo)
 {
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
 
     double noSwitchTime = 0;
     double withSwitchTime = 0;

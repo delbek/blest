@@ -44,7 +44,7 @@ struct MBFSResult
 class MBFSKernel
 {
 public:
-    MBFSKernel(BitMatrix* m_matrix);
+    MBFSKernel(BVSS* m_matrix);
     MBFSKernel(const MBFSKernel& other) = delete;
     MBFSKernel(MBFSKernel&& other) noexcept = delete;
     MBFSKernel& operator=(const MBFSKernel& other) = delete;
@@ -60,10 +60,10 @@ private:
     MBFSResult run256(const std::vector<unsigned>& sourceVertices);
 
 private:
-    BitMatrix* m_matrix;
+    BVSS* m_matrix;
 };
 
-MBFSKernel::MBFSKernel(BitMatrix* matrix)
+MBFSKernel::MBFSKernel(BVSS* matrix)
 : m_matrix(matrix)
 {
 
@@ -100,7 +100,7 @@ MBFSResult MBFSKernel::run32(const std::vector<unsigned>& sourceVertices)
 {
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();
@@ -331,7 +331,7 @@ MBFSResult MBFSKernel::run64(const std::vector<unsigned>& sourceVertices)
 {
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();
@@ -561,7 +561,7 @@ MBFSResult MBFSKernel::run128(const std::vector<unsigned>& sourceVertices)
 {
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();
@@ -825,7 +825,7 @@ MBFSResult MBFSKernel::run256(const std::vector<unsigned>& sourceVertices)
 {
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();

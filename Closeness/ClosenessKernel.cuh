@@ -48,7 +48,7 @@ struct ClosenessResult
 class ClosenessKernel
 {
 public:
-    ClosenessKernel(BitMatrix* m_matrix);
+    ClosenessKernel(BVSS* m_matrix);
     ClosenessKernel(const ClosenessKernel& other) = delete;
     ClosenessKernel(ClosenessKernel&& other) noexcept = delete;
     ClosenessKernel& operator=(const ClosenessKernel& other) = delete;
@@ -58,10 +58,10 @@ public:
     ClosenessResult run();
 
 private:
-    BitMatrix* m_matrix;
+    BVSS* m_matrix;
 };
 
-ClosenessKernel::ClosenessKernel(BitMatrix* matrix)
+ClosenessKernel::ClosenessKernel(BVSS* matrix)
 : m_matrix(matrix)
 {
 
@@ -80,7 +80,7 @@ ClosenessResult ClosenessKernel::run()
  
     gpuErrchk(cudaSetDevice(0));
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     CSC* csc = bvss->getCSR();
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();

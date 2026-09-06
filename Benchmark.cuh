@@ -314,7 +314,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
 
         // kernel run
         std::cout << "************* RUNNING BFS KERNELS *************" << std::endl;
-        BFSKernel* kernel = new BFSKernel(dynamic_cast<BitMatrix*>(bvss));
+        BFSKernel* kernel = new BFSKernel(bvss);
         std::vector<BFSResult> results = kernel->multiSourceRun(sources);
         //
         
@@ -356,7 +356,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
 
         // kernel run
         std::cout << "************* RUNNING MBFS KERNELS *************" << std::endl;
-        MBFSKernel* kernel = new MBFSKernel(dynamic_cast<BitMatrix*>(bvss));
+        MBFSKernel* kernel = new MBFSKernel(bvss);
         MBFSResult result = kernel->run(sources);
         //
 
@@ -394,7 +394,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
     {
         // kernel run
         std::cout << "************* RUNNING CLOSENESS CENTRALITY KERNELS *************" << std::endl;
-        ClosenessKernel* kernel = new ClosenessKernel(dynamic_cast<BitMatrix*>(bvss));
+        ClosenessKernel* kernel = new ClosenessKernel(bvss);
         ClosenessResult result = kernel->run();
         //
 
@@ -432,7 +432,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
 
         // kernel run
         std::cout << "************* RUNNING CONNECTED COMPONENT KERNELS *************" << std::endl;
-        CCKernel* kernel = new CCKernel(dynamic_cast<BitMatrix*>(bvss));
+        CCKernel* kernel = new CCKernel(bvss);
         CCResult result = kernel->run();
         //
 
@@ -473,7 +473,7 @@ double Benchmark::run(const Matrix& matrix, const Config& config)
 
         // kernel run
         std::cout << "************* RUNNING WEAKLY CONNECTED COMPONENT KERNELS *************" << std::endl;
-        CCKernel* kernel = new CCKernel(dynamic_cast<BitMatrix*>(bvss_s));
+        CCKernel* kernel = new CCKernel(bvss_s);
         CCResult result = kernel->run();
         //
 

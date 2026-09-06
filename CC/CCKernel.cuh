@@ -42,7 +42,7 @@ struct CCResult
 class CCKernel
 {
 public:
-    CCKernel(BitMatrix* matrix);
+    CCKernel(BVSS* matrix);
     CCKernel(const CCKernel& other) = delete;
     CCKernel(CCKernel&& other) noexcept = delete;
     CCKernel& operator=(const CCKernel& other) = delete;
@@ -52,10 +52,10 @@ public:
     CCResult run();
 
 private:
-    BitMatrix* m_matrix;
+    BVSS* m_matrix;
 };
 
-CCKernel::CCKernel(BitMatrix* matrix)
+CCKernel::CCKernel(BVSS* matrix)
 : m_matrix(matrix)
 {
 
@@ -65,7 +65,7 @@ CCResult CCKernel::run()
 {
     gpuErrchk(cudaSetDevice(0))
 
-    BVSS* bvss = dynamic_cast<BVSS*>(m_matrix);
+    BVSS* bvss = m_matrix;
     unsigned n = bvss->getN();
     unsigned sliceSize = bvss->getSliceSize();
     unsigned noMasks = bvss->getNoMasks();

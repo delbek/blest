@@ -36,7 +36,7 @@ Please see the papers:
 | --------------- |---------------------|
 | C++             | `20`                |
 | G++             | `12.3.0`            |
-| CMake           | `3.18`              |
+| CMake           | `3.24`              |
 | CUDA            | `13.0`              |
 | GPU Compute Cap.| `80`                |
 | libcurl         |  -                  |

@@ -106,8 +106,8 @@ private:
 	unsigned m_NNZ;
 	bool m_IsSocial;
 
-	unsigned* m_ColPtrs;
-	unsigned* m_Rows;
+	unsigned* m_ColPtrs = nullptr;
+	unsigned* m_Rows = nullptr;
 };
 
 CSC::CSC(std::string filename, bool undirected, bool binary)
@@ -564,15 +564,15 @@ unsigned* CSC::natural()
 
 unsigned* CSC::random()
 {
-	auto rng = [&]()
-	{
-		static std::mt19937 gen(std::random_device{}());
-		return gen;
-	};
 	unsigned* inversePermutation = new unsigned[m_N];
 	std::vector<unsigned> perm(m_N);
 	std::iota(perm.begin(), perm.end(), 0);
-	std::shuffle(perm.begin(), perm.end(), rng());
+
+	for (unsigned i = m_N; i > 1; --i)
+	{
+		unsigned j = rand(0, i - 1);
+		std::swap(perm[i - 1], perm[j]);
+	}
 
 	for (unsigned i = 0; i < m_N; ++i)
 	{
